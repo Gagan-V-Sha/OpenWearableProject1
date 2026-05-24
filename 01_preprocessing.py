@@ -1,9 +1,5 @@
-# 01_preprocessing.py
-#
-# Standalone script to execute the HCAI data pipeline.
-# Loads raw datasets, engineers physiological features, and outputs a clean
-# feature matrix for modeling, along with the HRV validation report.
 
+# Loads raw datasets, engineers physiological features
 import os
 import sys
 import json
