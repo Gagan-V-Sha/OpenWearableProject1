@@ -1,0 +1,17 @@
+# Raw downloads (too large for GitHub)
+data/figshare/raw_data.zip
+data/lifesnaps/rais_anonymized.zip
+data/lifesnaps/mongo_rais_anonymized/
+data/bidsleep/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
