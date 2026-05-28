@@ -289,7 +289,3 @@ Place raw source files under `data/lifesnaps/` and `data/figshare/` before runni
 ## Team
 
 **HCAI Group — Open Wearables Project**
-
-- **Shrusti** — dataset (with Gagan), 7-day profiles, documentation
-- **Gagan** — preprocessing script, dataset (with Shrusti)
-- **Sakshi** — explainable rule engine
