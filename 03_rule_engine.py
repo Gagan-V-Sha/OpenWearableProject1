@@ -16,6 +16,8 @@ Output:
 Author: Sakshi
 """
 
+from pathlib import Path
+
 import pandas as pd
 
 
@@ -112,3 +114,27 @@ def apply_rule_engine(df):
     )
 
     return df
+
+
+def main() -> None:
+    """
+    CLI entrypoint:
+      python 03_rule_engine.py
+
+    Reads profiles_7day.csv and writes profiles_7day_with_rules.csv.
+    """
+    root = Path(__file__).resolve().parent
+    input_path = root / "profiles_7day.csv"
+    output_path = root / "profiles_7day_with_rules.csv"
+
+    df = pd.read_csv(input_path)
+    df_out = apply_rule_engine(df)
+    df_out.to_csv(output_path, index=False)
+
+    print(f"Wrote {output_path}")
+    print(f"  Rows: {len(df_out):,}")
+    print(f"  Users: {df_out['user_id'].nunique()}")
+
+
+if __name__ == "__main__":
+    main()
