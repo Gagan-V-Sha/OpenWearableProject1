@@ -1,0 +1,17 @@
+Title: 01 — Merged Daily Wearable Dataset
+Project: HCAI Open Wearables — Explainable Recovery Assistant
+
+File: combined_daily.csv
+Rows: 8,782 (one row per user per day)
+Users: 120 (71 LifeSnaps + 49 Figshare)
+
+Columns:
+  user_id, date, sleep_hours, resting_hr, steps,
+  sleep_efficiency, active_minutes, rmssd, source
+
+Sources:
+  - LifeSnaps (Fitbit Sense) — prefix LS_
+  - Figshare (Samsung Galaxy Active 2) — prefix FS_
+
+Created by: preprocess.py
+Author: Gagan (preprocessing); Shrusti & Gagan (dataset)

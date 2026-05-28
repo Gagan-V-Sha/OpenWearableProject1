@@ -1,3 +1,20 @@
+"""
+Title: 03 — Explainable Rule Engine
+Project: HCAI Open Wearables — Explainable Recovery Assistant
+
+Description:
+    Applies transparent decision rules to 7-day profile features and returns
+    a training recommendation plus human-readable explanation.
+
+Input:
+    - profiles_7day.csv columns: recovery_score, hr_elevation_bpm, training_load_ratio
+
+Output:
+    - recommendation (Rest Day / Light Activity / Intensive Training)
+    - explanation (text evidence for the user)
+
+Author: Sakshi
+"""
 
 import pandas as pd
 

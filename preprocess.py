@@ -1,4 +1,20 @@
-"""Merge LifeSnaps (Fitbit) and Figshare (Samsung) into one daily wearable CSV."""
+"""
+Title: 01 — Data Preprocessing & Dataset Merge
+Project: HCAI Open Wearables — Explainable Recovery Assistant
+
+Description:
+    Merges LifeSnaps (Fitbit Sense) and Figshare (Samsung Galaxy Active 2)
+    into one unified daily-level wearable dataset.
+
+Input:
+    - LifeSnaps daily Fitbit CSV (local data/lifesnaps/... when re-running from raw)
+    - Figshare sleep_diary.csv + sensor_hrv_filtered.csv
+
+Output:
+    - combined_daily.csv (one row per user per day)
+
+Author: Gagan
+"""
 
 from pathlib import Path
 
