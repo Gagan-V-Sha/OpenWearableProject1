@@ -1,6 +1,6 @@
 # HCAI Open Wearables — Explainable Recovery Assistant
 
-Human-centred wearable recovery system that helps users understand whether they are recovering well from training. The system merges open wearable datasets, builds personal 7-day vs baseline profiles, applies transparent decision rules, and (next) adds ML predictions, LLM explanations, and a simple UI for a user study.
+Human-centred wearable recovery system that helps users understand whether they are recovering well from training. The system merges open wearable datasets, builds personal 7-day vs baseline profiles, applies transparent decision rules, trains an interpretable ML classifier with SHAP feature importances, and (next) adds LLM explanations, fairness auditing, and a simple UI for a user study.
 
 ---
 
@@ -22,8 +22,8 @@ Many fitness apps give a single score or recommendation without showing *why*. T
 | Merge wearable data | LifeSnaps + Figshare → one daily CSV (`combined_daily.csv`) |
 | Build 7/30-day profiles | Rolling **7-day windows** vs previous 7-day baseline (`profiles_7day.csv`) |
 | Compare to personal baseline | Each profile row compares *current week* to *previous week* for the same user |
-| Coding | Python pipeline: preprocess → profiles → rules → (ML + UI) |
-| HCAI aspect | Transparent rules + text explanations; future LLM layer for natural language |
+| Coding | Python pipeline: preprocess → clean → profiles → rules → ML + SHAP |
+| HCAI aspect | Transparent rules + SHAP-explained ML; future LLM layer for natural language |
 | User perspective | Recommendations framed for the user ("Am I recovering well?"); UI planned for study |
 
 ---
@@ -36,7 +36,8 @@ Many fitness apps give a single score or recommendation without showing *why*. T
 | **Merged daily dataset** | `combined_daily.csv` | **Shrusti & Gagan** |
 | **Daily cleaning (strict)** | `clean_daily.py`, `combined_daily_clean.csv` | **Shrusti** |
 | **7-day profile builder** | `build_profiles.py`, `profiles_7day.csv` | **Shrusti** |
-| **Explainable rule engine** | `03_rule_engine.py` | **Sakshi** |
+| **Explainable rule engine** | `03_rule_engine.py`, `profiles_7day_with_rules.csv` | **Sakshi** |
+| **ML + SHAP interpretability** | `train_model.py`, `shap_summary.csv` | **Shrusti** |
 | **Documentation** | `README.md` | **Shrusti** |
 
 ---
@@ -61,12 +62,12 @@ Many fitness apps give a single score or recommendation without showing *why*. T
                                 ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │  STEP 4 — Rule Engine (Sakshi)                                  │
-│  Transparent rules  →  recommendation + explanation             │
+│  Transparent rules  →  profiles_7day_with_rules.csv             │
 └───────────────────────────────┬─────────────────────────────────┘
                                 ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│  STEP 5 — ML Model (planned)                                    │
-│  Train classifier on profile features                           │
+│  STEP 5 — ML + SHAP (Shrusti)                                   │
+│  RandomForest classifier  →  shap_summary.csv (feature importance)│
 └───────────────────────────────┬─────────────────────────────────┘
                                 ↓
 ┌─────────────────────────────────────────────────────────────────┐
@@ -239,23 +240,67 @@ The engine collects human-readable reasons:
 
 If no specific reasons match, a default explanation is used per recommendation level.
 
-### Example output columns
+### Run
 
-| Column | Example |
-|--------|---------|
-| `recommendation` | `Light Activity` |
-| `explanation` | `Recommendation based on: elevated heart rate, high training load` |
+```powershell
+python 03_rule_engine.py
+```
+
+**Output:** `profiles_7day_with_rules.csv` (same rows as `profiles_7day.csv` plus `recommendation` and `explanation`).
 
 ---
 
-## Steps 4–7 — Planned next
+## Step 5 — ML model + SHAP summary
+
+**Script:** `train_model.py` · **Output:** `shap_summary.csv` (printed metrics to console)
+
+Trains a **RandomForest** classifier to predict the rule-engine label (`Rest Day` / `Light Activity` / `Intensive Training`) from interpretable profile features. This is a prototype ML layer aligned with the proposal (rule-based engine + SHAP-explained ML).
+
+### Inputs
+
+- `profiles_7day_with_rules.csv` (uses `recommendation` as the label)
+- Features: `sleep_change_pct`, `hr_change_bpm`, `steps_change_pct`, `recovery_score`, `hr_elevation_bpm`, `training_load_ratio`, `current_days`, `baseline_days`, `source`
+
+### What is `shap_summary.csv`?
+
+**SHAP** (SHapley Additive exPlanations) measures how much each feature contributed to the model’s predictions. The summary file stores **mean absolute SHAP** per feature on the test split — a simple global importance ranking:
+
+| Column | Meaning |
+|--------|---------|
+| `feature` | Profile feature name |
+| `mean_abs_shap` | Average magnitude of SHAP contribution (higher = more important to the model) |
+
+**Top drivers in our run:**
+
+| feature | mean_abs_shap |
+|---------|---------------|
+| `recovery_score` | 0.245 |
+| `training_load_ratio` | 0.098 |
+| `sleep_change_pct` | 0.066 |
+| `hr_change_bpm` | 0.029 |
+| `hr_elevation_bpm` | 0.025 |
+
+This supports interpretability: the ML model relies most on the same recovery signals as the rule engine, especially `recovery_score` and training load.
+
+**Note:** `shap_summary.csv` is a **global** summary (not per-user). Per-row SHAP explanations can be added later for the UI and faithfulness checks.
+
+### Run
+
+```powershell
+python train_model.py
+```
+
+---
+
+## Steps 6–8 — Planned next
 
 | Step | Goal | Status |
 |------|------|--------|
-| **4 — ML model** (`train_model.py`) | Train a classifier on `profiles_7day.csv` features; compare with rule engine | Not started |
-| **5 — LLM layer** | Generate natural-language explanations from rule/ML output + user context | Not started |
-| **6 — UI** | Simple Streamlit/Gradio app: select user, view profile, get recommendation | Not started |
-| **7 — User study** | Evaluate whether explanations are understandable and trustworthy | End of project |
+| **6 — LLM layer** | Generate natural-language explanations from rule/ML + SHAP; adapt to user expertise | Not started |
+| **7 — Faithfulness module** | Suppress LLM output if it doesn’t match rules + SHAP | Not started |
+| **8 — Fairness audit** | SPD/EOD across gender, age, sport type | Not started |
+| **9 — DiCE suggestions** | Counterfactual “what if you slept more?” recommendations | Not started |
+| **10 — UI + user study** | Streamlit/Gradio demo; evaluate trust and comprehension | End of project |
 
 ---
 
@@ -270,6 +315,9 @@ If no specific reasons match, a default explanation is used per recommendation l
 | 03 | `build_profiles.py` | **7-Day Profile Builder** | Last 7 days vs previous 7 days baseline comparison | Shrusti |
 | 03 | `profiles_7day.csv` | **7-Day Recovery Profiles** | 2,544 weekly profiles (after strict cleaning) | Shrusti |
 | 04 | `03_rule_engine.py` | **Explainable Rule Engine** | Transparent rules → recommendation + explanation | Sakshi |
+| 04 | `profiles_7day_with_rules.csv` | **Profiles + Rules Output** | 2,544 rows with `recommendation` + `explanation` | Sakshi |
+| 05 | `train_model.py` | **ML + SHAP** | RandomForest on profile features; writes `shap_summary.csv` | Shrusti |
+| 05 | `shap_summary.csv` | **SHAP Feature Importance** | Global mean \|SHAP\| per feature | Shrusti |
 
 ---
 
@@ -285,11 +333,14 @@ python clean_daily.py
 # Step 3 — builds profiles from combined_daily_clean.csv
 python build_profiles.py
 
-# Step 4 — apply rules (example usage in Python)
-python -c "import pandas as pd; from importlib import import_module; m=import_module('03_rule_engine'); df=pd.read_csv('profiles_7day.csv'); print(m.apply_rule_engine(df).head())"
+# Step 4 — apply rule engine (writes profiles_7day_with_rules.csv)
+python 03_rule_engine.py
+
+# Step 5 — train ML + write shap_summary.csv
+python train_model.py
 ```
 
-Place raw source files under `data/lifesnaps/` and `data/figshare/` before running `preprocess.py`. The committed `combined_daily.csv` and `profiles_7day.csv` can be used directly without re-running.
+Place raw source files under `data/lifesnaps/` and `data/figshare/` before running `preprocess.py` (local `data/` is gitignored). Committed CSVs can be used directly without re-running earlier steps.
 
 ---
 
