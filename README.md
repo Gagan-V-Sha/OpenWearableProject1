@@ -34,9 +34,10 @@ Many fitness apps give a single score or recommendation without showing *why*. T
 |-----------|-------|-----|
 | **Dataset merge & preprocessing** | `preprocess.py` | **Gagan** |
 | **Merged daily dataset** | `combined_daily.csv` | **Shrusti & Gagan** |
+| **Daily cleaning (strict)** | `clean_daily.py`, `combined_daily_clean.csv` | **Shrusti** |
 | **7-day profile builder** | `build_profiles.py`, `profiles_7day.csv` | **Shrusti** |
 | **Explainable rule engine** | `03_rule_engine.py` | **Sakshi** |
-| **Documentation & titles** | `README.md`, `*.TITLE.txt` | **Shrusti** |
+| **Documentation** | `README.md` | **Shrusti** |
 
 ---
 
@@ -49,32 +50,37 @@ Many fitness apps give a single score or recommendation without showing *why*. T
 └───────────────────────────────┬─────────────────────────────────┘
                                 ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│  STEP 2 — 7-Day Profiles (Shrusti)                              │
+│  STEP 2 — Daily cleaning (Shrusti)                              │
+│  Drop incomplete rows (strict)  →  combined_daily_clean.csv     │
+└───────────────────────────────┬─────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 3 — 7-Day Profiles (Shrusti)                              │
 │  Rolling windows + baseline comparison  →  profiles_7day.csv    │
 └───────────────────────────────┬─────────────────────────────────┘
                                 ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│  STEP 3 — Rule Engine (Sakshi)                                  │
+│  STEP 4 — Rule Engine (Sakshi)                                  │
 │  Transparent rules  →  recommendation + explanation             │
 └───────────────────────────────┬─────────────────────────────────┘
                                 ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│  STEP 4 — ML Model (planned)                                    │
+│  STEP 5 — ML Model (planned)                                    │
 │  Train classifier on profile features                           │
 └───────────────────────────────┬─────────────────────────────────┘
                                 ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│  STEP 5 — LLM Explanation Layer (planned)                       │
+│  STEP 6 — LLM Explanation Layer (planned)                       │
 │  Turn rule/ML output into natural-language advice                 │
 └───────────────────────────────┬─────────────────────────────────┘
                                 ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│  STEP 6 — Simple UI (planned)                                   │
+│  STEP 7 — Simple UI (planned)                                   │
 │  Streamlit/Gradio: pick user, ask "Am I recovering well?"       │
 └───────────────────────────────┬─────────────────────────────────┘
                                 ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│  STEP 7 — User Study (planned)                                  │
+│  STEP 8 — User Study (planned)                                  │
 │  Evaluate trust, clarity, and usefulness of explanations          │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -129,7 +135,19 @@ Other datasets (BIDSleep, raw_data.zip) were considered but not used — LifeSna
 
 ---
 
-## Step 2 — 7-day profile builder
+## Step 2 — Daily cleaning (strict)
+
+**Script:** `clean_daily.py` · **Author:** Shrusti · **Output:** `combined_daily_clean.csv`
+
+The merged daily dataset contains missing values (wearables aren’t recorded every day). For our current pipeline we create a **strict clean** daily dataset by **dropping any row** that is missing any of these key wearable columns:
+
+`sleep_hours`, `resting_hr`, `steps`, `sleep_efficiency`, `active_minutes`, `rmssd`
+
+This keeps true 0 values as-is (no imputation), and makes downstream profile building easier to inspect.
+
+---
+
+## Step 3 — 7-day profile builder
 
 **Script:** `build_profiles.py` · **Author:** Shrusti · **Output:** `profiles_7day.csv`
 
@@ -187,13 +205,13 @@ Final score clipped to **[0.0, 1.0]**.
 
 ### Output stats
 
-- **7,533 profile rows** (one per user per valid week-end date)
-- **120 users**
+- **2,544 profile rows** (one per user per valid week-end date)
+- **87 users** (after strict daily cleaning)
 - Key columns used downstream: `recovery_score`, `hr_elevation_bpm`, `training_load_ratio`
 
 ---
 
-## Step 3 — Explainable rule engine
+## Step 4 — Explainable rule engine
 
 **Script:** `03_rule_engine.py` · **Author:** Sakshi
 
@@ -247,9 +265,11 @@ If no specific reasons match, a default explanation is used per recommendation l
 |---|------|-------|-------------|-----|
 | 01 | `preprocess.py` | **Data Preprocessing & Dataset Merge** | Combines LifeSnaps + Figshare into one daily CSV | Gagan |
 | 01 | `combined_daily.csv` | **Merged Daily Wearable Dataset** | 120 users, 8,782 rows — sleep, HR, steps per day | Shrusti & Gagan |
-| 02 | `build_profiles.py` | **7-Day Profile Builder** | Last 7 days vs previous 7 days baseline comparison | Shrusti |
-| 02 | `profiles_7day.csv` | **7-Day Recovery Profiles** | 7,533 weekly profiles with recovery features | Shrusti |
-| 03 | `03_rule_engine.py` | **Explainable Rule Engine** | Transparent rules → recommendation + explanation | Sakshi |
+| 02 | `clean_daily.py` | **Daily Cleaning (Strict)** | Drops rows with missing key values → `combined_daily_clean.csv` | Shrusti |
+| 02 | `combined_daily_clean.csv` | **Clean Daily Dataset (Strict)** | 92 users, 3,667 rows — no missing key columns | Shrusti |
+| 03 | `build_profiles.py` | **7-Day Profile Builder** | Last 7 days vs previous 7 days baseline comparison | Shrusti |
+| 03 | `profiles_7day.csv` | **7-Day Recovery Profiles** | 2,544 weekly profiles (after strict cleaning) | Shrusti |
+| 04 | `03_rule_engine.py` | **Explainable Rule Engine** | Transparent rules → recommendation + explanation | Sakshi |
 
 ---
 
@@ -259,10 +279,13 @@ If no specific reasons match, a default explanation is used per recommendation l
 # Step 1 — only needed when re-building from raw source CSVs
 python preprocess.py
 
-# Step 2 — builds profiles from combined_daily.csv
+# Step 2 — strict clean daily dataset (drops incomplete rows)
+python clean_daily.py
+
+# Step 3 — builds profiles from combined_daily_clean.csv
 python build_profiles.py
 
-# Step 3 — apply rules (example usage in Python)
+# Step 4 — apply rules (example usage in Python)
 python -c "import pandas as pd; from importlib import import_module; m=import_module('03_rule_engine'); df=pd.read_csv('profiles_7day.csv'); print(m.apply_rule_engine(df).head())"
 ```
 
@@ -282,6 +305,7 @@ Place raw source files under `data/lifesnaps/` and `data/figshare/` before runni
 - **Figshare resting HR** is the mean HR from 5-minute sensor segments, not a true resting HR — values can run higher (~80–90 bpm) than LifeSnaps resting HR.
 - **Missing days:** windows need ≥4 days of data; sparse users produce fewer profile rows.
 - **Cross-device comparison:** LifeSnaps and Figshare use different devices; profiles are always compared within the same user, not across users.
+- **Strict cleaning tradeoff:** `combined_daily_clean.csv` drops any day missing a key signal; this reduces usable users/days (profiles currently cover 87 users).
 - **30-day profiles:** not yet implemented; current pipeline uses 7-day windows only.
 
 ---
