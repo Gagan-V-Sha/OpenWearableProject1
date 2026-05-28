@@ -21,7 +21,13 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent
-INPUT = ROOT / "combined_daily.csv"
+INPUT_RAW = ROOT / "combined_daily.csv"
+INPUT_CLEAN = ROOT / "combined_daily_clean.csv"
+INPUT_FILLED = ROOT / "combined_daily_filled.csv"
+INPUT_CLEAN_V2 = ROOT / "combined_daily_clean_v2.csv"
+INPUT_FILLED_V2 = ROOT / "combined_daily_filled_v2.csv"
+INPUT_FILLED_FLAGS = ROOT / "combined_daily_filled_flags_v2.csv"
+INPUT_STRICT = ROOT / "combined_daily_strict_v2.csv"
 OUTPUT = ROOT / "profiles_7day.csv"
 
 WINDOW_DAYS = 7
@@ -30,10 +36,12 @@ MIN_DAYS_PER_WINDOW = 4
 
 def _window_stats(group: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> dict | None:
     window = group[(group["date"] > start) & (group["date"] <= end)]
-    if len(window) < MIN_DAYS_PER_WINDOW:
+    # Count "valid days" as rows with at least one core signal present.
+    valid_days = int(window[["sleep_hours", "resting_hr", "steps"]].notna().any(axis=1).sum())
+    if valid_days < MIN_DAYS_PER_WINDOW:
         return None
     return {
-        "days": len(window),
+        "days": valid_days,
         "sleep_avg": window["sleep_hours"].mean(),
         "resting_hr_avg": window["resting_hr"].mean(),
         "steps_total": window["steps"].sum(),
@@ -125,11 +133,31 @@ def build_profiles(daily: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
-    daily = pd.read_csv(INPUT)
+    input_path = (
+        INPUT_STRICT
+        if INPUT_STRICT.exists()
+        else
+        INPUT_FILLED_FLAGS
+        if INPUT_FILLED_FLAGS.exists()
+        else
+        INPUT_FILLED_V2
+        if INPUT_FILLED_V2.exists()
+        else (
+            INPUT_FILLED
+            if INPUT_FILLED.exists()
+            else (
+                INPUT_CLEAN_V2
+                if INPUT_CLEAN_V2.exists()
+                else (INPUT_CLEAN if INPUT_CLEAN.exists() else INPUT_RAW)
+            )
+        )
+    )
+    daily = pd.read_csv(input_path)
     profiles = build_profiles(daily)
     profiles.to_csv(OUTPUT, index=False)
 
     print(f"Wrote {OUTPUT}")
+    print(f"  Input: {input_path.name}")
     print(f"  Profile rows: {len(profiles):,}")
     print(f"  Users: {profiles['user_id'].nunique()}")
     print(f"  Date range: {profiles['window_end_date'].min()} to {profiles['window_end_date'].max()}")
