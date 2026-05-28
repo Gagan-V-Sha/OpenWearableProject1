@@ -2,3 +2,6 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Local raw datasets (junction to HCAI PROJ/data) — do not commit
+data/
