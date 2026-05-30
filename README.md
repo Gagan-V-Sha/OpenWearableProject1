@@ -226,71 +226,7 @@ Takes profile features and returns a **recommendation** plus a **text explanatio
 | **Intensive Training** | `recovery_score ≥ 0.58` **AND** `hr_elevation_bpm < 3` **AND** `training_load_ratio < 1.2` |
 | **Light Activity** | Everything else (moderate zone) |
 
-### Explanation rules
 
-The engine collects human-readable reasons:
-
-| Signal | Reason added |
-|--------|-------------|
-| `recovery_score < 0.45` | "low recovery score" |
-| `hr_elevation_bpm > 3` | "elevated heart rate" |
-| `training_load_ratio > 1.2` | "high training load" |
-| `0.5 ≤ training_load_ratio < 1.0` | "balanced training load" |
-| `recovery_score > 0.60` | "strong recovery readiness" |
-
-If no specific reasons match, a default explanation is used per recommendation level.
-
-### Run
-
-```powershell
-python 03_rule_engine.py
-```
-
-**Output:** `profiles_7day_with_rules.csv` (same rows as `profiles_7day.csv` plus `recommendation` and `explanation`).
-
----
-
-## Step 5 — ML model + SHAP summary
-
-**Script:** `train_model.py` · **Output:** `shap_summary.csv` (printed metrics to console)
-
-Trains a **RandomForest** classifier to predict the rule-engine label (`Rest Day` / `Light Activity` / `Intensive Training`) from interpretable profile features. This is a prototype ML layer aligned with the proposal (rule-based engine + SHAP-explained ML).
-
-### Inputs
-
-- `profiles_7day_with_rules.csv` (uses `recommendation` as the label)
-- Features: `sleep_change_pct`, `hr_change_bpm`, `steps_change_pct`, `recovery_score`, `hr_elevation_bpm`, `training_load_ratio`, `current_days`, `baseline_days`, `source`
-
-### What is `shap_summary.csv`?
-
-**SHAP** (SHapley Additive exPlanations) measures how much each feature contributed to the model’s predictions. The summary file stores **mean absolute SHAP** per feature on the test split — a simple global importance ranking:
-
-| Column | Meaning |
-|--------|---------|
-| `feature` | Profile feature name |
-| `mean_abs_shap` | Average magnitude of SHAP contribution (higher = more important to the model) |
-
-**Top drivers in our run:**
-
-| feature | mean_abs_shap |
-|---------|---------------|
-| `recovery_score` | 0.245 |
-| `training_load_ratio` | 0.098 |
-| `sleep_change_pct` | 0.066 |
-| `hr_change_bpm` | 0.029 |
-| `hr_elevation_bpm` | 0.025 |
-
-This supports interpretability: the ML model relies most on the same recovery signals as the rule engine, especially `recovery_score` and training load.
-
-**Note:** `shap_summary.csv` is a **global** summary (not per-user). Per-row SHAP explanations can be added later for the UI and faithfulness checks.
-
-### Run
-
-```powershell
-python train_model.py
-```
-
----
 
 ## Steps 6–8 — Planned next
 
@@ -302,47 +238,7 @@ python train_model.py
 | **9 — DiCE suggestions** | Counterfactual “what if you slept more?” recommendations | Not started |
 | **10 — UI + user study** | Streamlit/Gradio demo; evaluate trust and comprehension | End of project |
 
----
 
-## Repository files
-
-| # | File | Title | Description | By |
-|---|------|-------|-------------|-----|
-| 01 | `preprocess.py` | **Data Preprocessing & Dataset Merge** | Combines LifeSnaps + Figshare into one daily CSV | Gagan |
-| 01 | `combined_daily.csv` | **Merged Daily Wearable Dataset** | 120 users, 8,782 rows — sleep, HR, steps per day | Shrusti & Gagan |
-| 02 | `clean_daily.py` | **Daily Cleaning (Strict)** | Drops rows with missing key values → `combined_daily_clean.csv` | Shrusti |
-| 02 | `combined_daily_clean.csv` | **Clean Daily Dataset (Strict)** | 92 users, 3,667 rows — no missing key columns | Shrusti |
-| 03 | `build_profiles.py` | **7-Day Profile Builder** | Last 7 days vs previous 7 days baseline comparison | Shrusti |
-| 03 | `profiles_7day.csv` | **7-Day Recovery Profiles** | 2,544 weekly profiles (after strict cleaning) | Shrusti |
-| 04 | `03_rule_engine.py` | **Explainable Rule Engine** | Transparent rules → recommendation + explanation | Sakshi |
-| 04 | `profiles_7day_with_rules.csv` | **Profiles + Rules Output** | 2,544 rows with `recommendation` + `explanation` | Sakshi |
-| 05 | `train_model.py` | **ML + SHAP** | RandomForest on profile features; writes `shap_summary.csv` | Shrusti |
-| 05 | `shap_summary.csv` | **SHAP Feature Importance** | Global mean \|SHAP\| per feature | Shrusti |
-
----
-
-## Run order
-
-```powershell
-# Step 1 — only needed when re-building from raw source CSVs
-python preprocess.py
-
-# Step 2 — strict clean daily dataset (drops incomplete rows)
-python clean_daily.py
-
-# Step 3 — builds profiles from combined_daily_clean.csv
-python build_profiles.py
-
-# Step 4 — apply rule engine (writes profiles_7day_with_rules.csv)
-python 03_rule_engine.py
-
-# Step 5 — train ML + write shap_summary.csv
-python train_model.py
-```
-
-Place raw source files under `data/lifesnaps/` and `data/figshare/` before running `preprocess.py` (local `data/` is gitignored). Committed CSVs can be used directly without re-running earlier steps.
-
----
 
 ## Data sources
 
@@ -350,17 +246,3 @@ Place raw source files under `data/lifesnaps/` and `data/figshare/` before runni
 - [Figshare HRV + Sleep](https://doi.org/10.6084/m9.figshare.28509740) — Samsung Galaxy Active 2, 49 users, ~4 weeks
 
 ---
-
-## Known limitations
-
-- **Figshare resting HR** is the mean HR from 5-minute sensor segments, not a true resting HR — values can run higher (~80–90 bpm) than LifeSnaps resting HR.
-- **Missing days:** windows need ≥4 days of data; sparse users produce fewer profile rows.
-- **Cross-device comparison:** LifeSnaps and Figshare use different devices; profiles are always compared within the same user, not across users.
-- **Strict cleaning tradeoff:** `combined_daily_clean.csv` drops any day missing a key signal; this reduces usable users/days (profiles currently cover 87 users).
-- **30-day profiles:** not yet implemented; current pipeline uses 7-day windows only.
-
----
-
-## Team
-
-**HCAI Group — Open Wearables Project**
