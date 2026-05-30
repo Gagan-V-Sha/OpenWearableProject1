@@ -1,20 +1,3 @@
-"""
-Title: 02 — 7-Day Profile Builder & Recovery Features
-Project: HCAI Open Wearables — Explainable Recovery Assistant
-
-Description:
-    Builds rolling 7-day user profiles and compares each window to the
-    previous 7-day baseline (sleep, heart rate, steps, activity load).
-
-Input:
-    - combined_daily.csv
-
-Output:
-    - profiles_7day.csv (recovery_score, hr_elevation_bpm, training_load_ratio)
-
-Author: Shrusti
-"""
-
 from pathlib import Path
 
 import numpy as np
