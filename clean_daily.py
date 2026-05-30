@@ -1,24 +1,3 @@
-"""
-Title: 01b — Daily Dataset Cleaning (Post-merge)
-Project: HCAI Open Wearables — Explainable Recovery Assistant
-
-Description:
-    Cleans the merged daily dataset produced by preprocess.py (or the committed
-    combined_daily.csv). This step is intentionally lightweight: it standardizes
-    types, removes rows with no usable signals, and applies simple plausibility
-    bounds to reduce extreme/outlier values.
-
-Input:
-    - combined_daily.csv
-
-Output:
-    - combined_daily_clean.csv (light cleaning)
-    - combined_daily_filled.csv (imputed; no empty cells in key columns)
-    - combined_daily_strict.csv (drop rows with any missing key value; keeps real zeros)
-
-Author: Shrusti
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
