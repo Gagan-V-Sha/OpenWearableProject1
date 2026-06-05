@@ -10,6 +10,7 @@ def recovery_recommendation(row):
     recovery = row['recovery_score']
     hr = row['hr_elevation_bpm']
     load = row['training_load_ratio']
+    sleep = row['sleep_avg_7d']
 
     # Handle missing values
     if pd.isna(load):
@@ -18,23 +19,28 @@ def recovery_recommendation(row):
     if pd.isna(hr):
         hr = 0
 
+    if pd.isna(sleep):
+    sleep = 7.0
+
     # Recommendation logic
-    if (
-        recovery < 0.40
-        or hr > 5
-        or load > 1.5
-    ):
-        recommendation = "Rest Day"
+   if (
+    recovery < 0.40
+    or hr > 5
+    or load > 1.5
+    or sleep < 6
+):
+    recommendation = "Rest Day"
 
-    elif (
-        recovery >= 0.58
-        and hr < 3
-        and load < 1.2
-    ):
-        recommendation = "Intensive Training"
+elif (
+    recovery >= 0.58
+    and hr < 3
+    and load < 1.2
+    and sleep >= 7
+):
+    recommendation = "Intensive Training"
 
-    else:
-        recommendation = "Light Activity"
+else:
+    recommendation = "Light Activity"
 
     # Explanation logic
     if recovery < 0.45:
@@ -51,6 +57,9 @@ def recovery_recommendation(row):
 
     if recovery > 0.60:
         reasons.append("strong recovery readiness")
+
+    if sleep >= 7.5:
+    reasons.append("adequate sleep")
 
     # Human explanation
     if len(reasons) == 0:
