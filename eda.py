@@ -1,8 +1,5 @@
 # Exploratory Data Analysis (EDA) for the Open Wearables Project.
-#
-# Analyzes the cleaned daily physiological data, demographics for the fairness layer,
-# and the engineered 7-day rolling profiles used for Machine Learning.
-# Generates and saves visual plots.
+# Analyzes the cleaned daily physiological data, demographics for the fairness layer,and the engineered 7-day rolling profiles used for Machine Learning.Generates and saves visual plots.
 
 import os
 from pathlib import Path
@@ -132,7 +129,7 @@ def main():
     run_demographic_eda()
     run_daily_eda()
     run_profile_eda()
-    print("\nEDA Complete! All plots have been saved successfully.")
+    print("\nEDA plots have been saved .")
 
 
 if __name__ == "__main__":

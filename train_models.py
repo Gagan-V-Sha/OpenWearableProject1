@@ -1,6 +1,4 @@
-# Train Machine Learning Models for the Open Wearables Project.
-#
-# Trains:
+# Train Machine Learning Models 
 # 1. XGBoost Classifier (for recovery recommendations, compatible with SHAP)
 # 2. Isolation Forest (for biological anomaly detection)
 
@@ -14,6 +12,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import IsolationForest
 from sklearn.metrics import classification_report, accuracy_score
+from imblearn.over_sampling import SMOTE
 import xgboost as xgb
 
 ROOT = Path(__file__).resolve().parent
@@ -52,7 +51,7 @@ def train_models():
     df = pd.read_csv(PROFILE_PATH)
     
     # 1. Prepare Data
-    # Drop rows with NaNs in feature columns just in case
+    # Drop rows with NaNs in feature columns
     df = df.dropna(subset=FEATURES + ['recommendation'])
     
     X = df[FEATURES]
@@ -63,8 +62,17 @@ def train_models():
     
     print(f"Training on {len(X_train)} samples, testing on {len(X_test)} samples.")
     
+    # Apply SMOTE to training set only — never to test set (which could lead to data leakage).
+    # Balances the minority class (Intensive Training) up to match the majority classes.
+    print("\nApplying SMOTE to training set")
+    label_names = {v: k for k, v in LABEL_MAP.items()}
+    print("Before SMOTE:", {label_names[k]: v for k, v in zip(*np.unique(y_train, return_counts=True))})
+    smote = SMOTE(random_state=42)
+    X_train_sm, y_train_sm = smote.fit_resample(X_train, y_train)
+    print("After SMOTE: ", {label_names[k]: v for k, v in zip(*np.unique(y_train_sm, return_counts=True))})
+    
     # 2. Train XGBoost Classifier
-    print("\n--- Training XGBoost Classifier ---")
+    print("\nTraining XGBoost Classifier")
     # Using specific hyperparams to prevent overfitting and make rules cleaner for SHAP
     xgb_model = xgb.XGBClassifier(
         n_estimators=100,
@@ -75,7 +83,7 @@ def train_models():
         eval_metric='mlogloss'
     )
     
-    xgb_model.fit(X_train, y_train)
+    xgb_model.fit(X_train_sm, y_train_sm)
     
     # Evaluate
     y_pred = xgb_model.predict(X_test)
@@ -86,8 +94,8 @@ def train_models():
     print(classification_report(y_test, y_pred, target_names=[target_names[i] for i in range(3)]))
     
     # 3. Train Isolation Forest (Anomaly Detection)
-    print("\n--- Training Isolation Forest (Anomaly Detection) ---")
-    # Contamination set to 5% assuming 5% of days might be wild physiological outliers
+    print("\nTraining Isolation Forest (Anomaly Detection)")
+    # Contamination set to 5% assuming 5% of days might be physiological outliers
     iso_model = IsolationForest(contamination=0.05, random_state=42)
     iso_model.fit(X)  # Unsupervised, so we train on all X
     

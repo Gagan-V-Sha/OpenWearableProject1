@@ -12,51 +12,92 @@ DAILY_PATH = PROCESSED / "combined_daily.csv"
 OUT_PROFILES = PROCESSED / "profiles_7day.csv"
 
 def generate_pseudo_labels(row: pd.Series) -> tuple[float, str]:
-    # Heuristic rule engine to generate a 'recovery_score' and a recommendation label.
-    # Score ranges 0.0 to 1.0.
-    score = 0.55
+    # Weighted multi-signal heuristic grounded in published sports science.
+
+    score = 0.50
+
     sleep_change = row.get("sleep_change_pct", 0.0)
     hr_change = row.get("hr_elevation_bpm", 0.0)
     load = row.get("training_load_ratio", 1.0)
-    
-    # Missing value handling if NaNs slip through
+    rmssd = row.get("rmssd_avg_7d", 40.0)
+    efficiency = row.get("sleep_efficiency_avg_7d", 80.0)
+    workouts = row.get("workouts_count", 3.0)
+
+    # Missing value handling
     if pd.isna(sleep_change): sleep_change = 0.0
     if pd.isna(hr_change): hr_change = 0.0
     if pd.isna(load): load = 1.0
+    if pd.isna(rmssd): rmssd = 40.0
+    if pd.isna(efficiency): efficiency = 80.0
+    if pd.isna(workouts): workouts = 3.0
 
-    # Sleep penalization
-    if sleep_change < -10.0:
-        score -= 0.25
+    # Signal 1: HRV / RMSSD (Plews et al. 2013)
+    # Highest weight — suppressed HRV is the strongest indicator of under-recovery.
+    if rmssd > 60.0:
+        score += 0.15    # Excellent autonomic recovery
+    elif rmssd >= 40.0:
+        score += 0.05    # Good
+    elif rmssd >= 25.0:
+        score -= 0.10    # Suppressed HRV
+    else:
+        score -= 0.20    # Very suppressed — strong rest signal
+
+    # Signal 2: Sleep change % (Fullagar et al. 2015)
+    if sleep_change > 5.0:
+        score += 0.08    # More sleep than baseline = extra recovery
+    elif sleep_change < -10.0:
+        score -= 0.20    # Major sleep deficit
     elif sleep_change < -5.0:
-        score -= 0.15
-    elif sleep_change > 5.0:
-        score += 0.10
+        score -= 0.12    # Moderate sleep deficit
 
-    # Heart rate penalization
-    if hr_change > 4.0:
-        score -= 0.25
-    elif hr_change > 2.0:
-        score -= 0.15
-    elif hr_change < -2.0:
-        score += 0.10
+    # Signal 3: Resting HR elevation
+    if hr_change < -2.0:
+        score += 0.08    # Lowering HR = improved cardiovascular fitness
+    elif hr_change <= 2.0:
+        pass             # Neutral range
+    elif hr_change <= 4.0:
+        score -= 0.10    # Elevated — possible stress or fatigue
+    else:
+        score -= 0.18    # Significantly elevated — overreaching marker
 
-    # Training Load (ACWR) penalization
-    if load > 1.50:
-        score -= 0.20
-    elif load > 1.30:
-        score -= 0.10
-    elif load < 0.85:
-        score += 0.10
+    # Signal 4: ACWR Training Load (Gabbett 2016 published zones)
+    if load < 0.8:
+        score -= 0.05    # Undertraining — slight deconditioning risk
+    elif load <= 1.3:
+        score += 0.10    # Sweet spot — optimal training stimulus
+    elif load <= 1.5:
+        score -= 0.08    # Caution zone — elevated injury risk
+    else:
+        score -= 0.20    # Danger zone — high injury risk
 
+    # Signal 5: Sleep efficiency
+    if efficiency > 85.0:
+        score += 0.07    # Clinically good sleep quality
+    elif efficiency < 75.0:
+        score -= 0.10    # Clinically poor sleep quality
+
+    # Signal 6: Workouts count in last 7 days 
+    if workouts > 5:
+        score -= 0.08    # No rest days — overtraining risk
+    elif workouts >= 3:
+        score += 0.05    # Appropriate training frequency
+
+    # Clamp to valid range
     score = max(0.0, min(1.0, score))
 
-    if score < 0.45:
+    # Add small Gaussian noise to prevent the model from memorising a deterministic decision boundary. Simulates real-world annotation uncertainty at class margins (σ=0.03).
+    noise = np.random.normal(0.0, 0.03)
+    score_noisy = max(0.0, min(1.0, score + noise))
+
+    # Label thresholds
+    if score_noisy < 0.40:
         rec = "Rest Day"
-    elif score < 0.65:
+    elif score_noisy < 0.60:
         rec = "Light Activity"
     else:
         rec = "Intensive Training"
 
+    # Return the clean score
     return score, rec
 
 def build_profiles() -> None:
@@ -81,9 +122,13 @@ def build_profiles() -> None:
         idx = pd.date_range(user_df.index.min(), user_df.index.max())
         user_df = user_df.reindex(idx)
         
-        # Interpolate missing values (linear, max 3 days to avoid hallucinating long gaps)
-        cols_to_interpolate = ["sleep_hours", "resting_hr", "rmssd", "sleep_efficiency"]
-        user_df[cols_to_interpolate] = user_df[cols_to_interpolate].interpolate(method="linear", limit=3)
+        # Interpolate missing values.
+        # Sleep and HR use limit=7 to bridge moderate gaps (up to 1 week) and recover users with small data holes. RMSSD uses limit=3 — HRV values should not be fabricated across long gaps as they carry high clinical weight.
+        cols_sleep_hr = ["sleep_hours", "resting_hr", "sleep_efficiency"]
+        cols_hrv = ["rmssd"]
+        user_df[cols_sleep_hr] = user_df[cols_sleep_hr].interpolate(method="linear", limit=7)
+        user_df[cols_hrv] = user_df[cols_hrv].interpolate(method="linear", limit=3)
+        cols_to_interpolate = cols_sleep_hr + cols_hrv
         
         # Fill remaining NAs with backward/forward fill for robustness
         user_df[cols_to_interpolate] = user_df[cols_to_interpolate].bfill().ffill()
@@ -91,6 +136,10 @@ def build_profiles() -> None:
         # Fill activity with 0 if missing
         cols_zero = ["steps", "active_minutes"]
         user_df[cols_zero] = user_df[cols_zero].fillna(0)
+        
+        # RMSSD may be entirely absent for some users (device limitation).
+        # Fill with 0 and treats 0 RMSSD as a strong rest signal (score -= 0.20), which is
+        user_df["rmssd"] = user_df["rmssd"].fillna(0)
         
         # 1. Calculate 7-day Rolling Features
         # Current 7 days
@@ -110,7 +159,7 @@ def build_profiles() -> None:
         sleep_change_pct = ((avg_7d["sleep_hours"] - avg_prev_7d["sleep_hours"]) / avg_prev_7d["sleep_hours"]) * 100
         hr_elevation_bpm = avg_7d["resting_hr"] - avg_prev_7d["resting_hr"]
         
-        # Acute:Chronic Workload Ratio (ACWR proxy)
+        # Acute:Chronic Workload Ratio 
         training_load_ratio = sum_7d["active_minutes"] / sum_prev_7d["active_minutes"].replace(0, 1) # avoid div0
         
         # Build Profile Rows
@@ -136,7 +185,7 @@ def build_profiles() -> None:
                 "sleep_avg_prev_7d": avg_prev_7d.loc[current_date, "sleep_hours"],
                 "active_minutes_total_prev_7d": sum_prev_7d.loc[current_date, "active_minutes"],
                 
-                # Derived (ML Features)
+                # Derived ML Features
                 "sleep_change_pct": sleep_change_pct.loc[current_date],
                 "hr_elevation_bpm": hr_elevation_bpm.loc[current_date],
                 "training_load_ratio": training_load_ratio.loc[current_date],
@@ -151,8 +200,10 @@ def build_profiles() -> None:
 
     profiles_df = pd.DataFrame(profiles)
     
-    # Drop rows with any remaining NaNs to ensure clean ML training
-    profiles_df = profiles_df.dropna()
+    # Drop rows with NaNs only in the ML feature columns used for training.
+    # This preserves users who have no RMSSD data (rmssd_avg_7d=0 is valid).
+    from train_models import FEATURES
+    profiles_df = profiles_df.dropna(subset=FEATURES + ["recommendation"])
     
     profiles_df.to_csv(OUT_PROFILES, index=False)
     print(f"\nWrote {OUT_PROFILES}")
