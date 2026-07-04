@@ -1,0 +1,70 @@
+{
+  "favorable_label": "Intensive Training",
+  "truth": "rule_recommendation",
+  "spd_threshold": 0.1,
+  "eod_threshold": 0.1,
+  "attributes": [
+    {
+      "attribute": "gender",
+      "status": "ok",
+      "reference_group": "MALE",
+      "favorable_label": "Intensive Training",
+      "groups": [
+        {
+          "group": "MALE",
+          "n": 1961,
+          "favorable_rate": 0.313,
+          "tpr_favorable": 0.966,
+          "SPD_vs_ref": 0.0,
+          "EOD_vs_ref": 0.0,
+          "breach": false
+        },
+        {
+          "group": "FEMALE",
+          "n": 1304,
+          "favorable_rate": 0.248,
+          "tpr_favorable": 1.0,
+          "SPD_vs_ref": -0.064,
+          "EOD_vs_ref": 0.034,
+          "breach": false
+        }
+      ]
+    },
+    {
+      "attribute": "age_group",
+      "status": "ok",
+      "reference_group": "<30",
+      "favorable_label": "Intensive Training",
+      "groups": [
+        {
+          "group": "<30",
+          "n": 1623,
+          "favorable_rate": 0.32,
+          "tpr_favorable": 0.973,
+          "SPD_vs_ref": 0.0,
+          "EOD_vs_ref": 0.0,
+          "breach": false
+        },
+        {
+          "group": ">=30",
+          "n": 1560,
+          "favorable_rate": 0.265,
+          "tpr_favorable": 0.983,
+          "SPD_vs_ref": -0.056,
+          "EOD_vs_ref": 0.009,
+          "breach": false
+        }
+      ]
+    },
+    {
+      "attribute": "sport_type",
+      "status": "skipped",
+      "reason": "fewer than 2 groups with >= 30 samples",
+      "groups": [
+        "Mixed"
+      ]
+    }
+  ],
+  "reweighing": null,
+  "overall_status": "ok"
+}

@@ -1,6 +1,5 @@
 # Preprocess LifeSnaps daily wearable data and extract demographics.
 
-import os
 from pathlib import Path
 import pandas as pd
 
@@ -26,11 +25,10 @@ def process_lifesnaps() -> tuple[pd.DataFrame, pd.DataFrame]:
     df["date"] = pd.to_datetime(df["date"]).dt.date
     
     # 1. Process Daily Wearable Data
-    active = (
-        df["lightly_active_minutes"].fillna(0)
-        + df["moderately_active_minutes"].fillna(0)
-        + df["very_active_minutes"].fillna(0)
-    )
+    # min_count=1 keeps the sum NaN when ALL three components are missing (device not worn / not synced) instead of silently producing 0.
+    active = df[
+        ["lightly_active_minutes", "moderately_active_minutes", "very_active_minutes"]
+    ].sum(axis=1, min_count=1)
     
     daily_df = pd.DataFrame({
         "user_id": "LS_" + df["id"].astype(str),
@@ -41,6 +39,10 @@ def process_lifesnaps() -> tuple[pd.DataFrame, pd.DataFrame]:
         "sleep_efficiency": df["sleep_efficiency"],
         "active_minutes": active,
         "rmssd": df["rmssd"],  # Heart Rate Variability
+        # SEMA ecological momentary assessment self-reports (binary, sparse).
+        # These provide human ground-truth labels for the ML module, so the model is not trained on labels derived from its own input features.(which was done before and hence we got 99+ accuracy-dont forget this!!!!!!!!!!!!!)
+        "sema_tired": df["TIRED"],
+        "sema_rested": df["RESTED/RELAXED"],
         "source": "lifesnaps",
     })
     
@@ -60,7 +62,7 @@ def process_lifesnaps() -> tuple[pd.DataFrame, pd.DataFrame]:
         # Add a default sport_type for the fairness audit to work
         demo_df["sport_type"] = "Mixed" 
         
-        # Rename or clean up age/gender if needed
+        # Rename or clean up age&gender if needed
         # Assuming gender is string. We might want to standardize it.
         if "gender" in demo_df.columns:
             demo_df["gender"] = demo_df["gender"].fillna("Unknown")
