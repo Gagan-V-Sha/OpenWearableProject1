@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import pickle
 import re
@@ -115,10 +116,12 @@ def get_users():
     for uid in counts.index:
         demo = STORE.demo.loc[uid] if uid in STORE.demo.index else {}
         age = demo.get("age_group") if hasattr(demo, "get") else None
+        gender = demo.get("gender") if hasattr(demo, "get") else None
         users.append({
             "user_id": uid,
             "display_name": display_name(uid),
             "age_group": None if (age is None or pd.isna(age) or age == "Unknown") else str(age),
+            "gender": None if (gender is None or pd.isna(gender) or gender == "Unknown") else str(gender),
         })
     return users
 
@@ -425,6 +428,187 @@ def get_suggestions(user_id: str):
             }
             for s in res.suggestions
         ],
+    }
+
+FEATURE_LABELS = {
+    "sleep_change_pct": "Sleep change vs baseline",
+    "hr_elevation_bpm": "Resting HR elevation",
+    "training_load_ratio": "Training load (ACWR)",
+    "sleep_avg_7d": "Average sleep",
+    "resting_hr_avg_7d": "Average resting HR",
+    "steps_avg_7d": "Average daily steps",
+    "active_minutes_avg_7d": "Average active minutes",
+    "rmssd_avg_7d": "HRV (RMSSD)",
+    "sleep_efficiency_avg_7d": "Sleep efficiency",
+    "workouts_count": "Workouts this week",
+    "rmssd_missing": "HRV data availability",
+}
+
+def _fmt_feature(feature: str, value) -> str:
+    if value is None or pd.isna(value):
+        return "n/a"
+    v = float(value)
+    units = {
+        "sleep_change_pct": f"{v:+.0f}%",
+        "hr_elevation_bpm": f"{v:+.1f} bpm",
+        "training_load_ratio": f"{v:.2f}x",
+        "sleep_avg_7d": f"{v:.1f} h",
+        "resting_hr_avg_7d": f"{v:.0f} bpm",
+        "rmssd_avg_7d": f"{v:.0f} ms",
+        "sleep_efficiency_avg_7d": f"{v:.0f}%",
+        "workouts_count": f"{v:.0f}",
+    }
+    return units.get(feature, f"{v:.1f}")
+
+@app.get("/api/monitoring/{user_id}")
+def get_monitoring(user_id: str, days: int = 120):
+    rows = STORE.usable[STORE.usable["user_id"] == user_id].sort_values("window_end_date")
+    if rows.empty:
+        raise HTTPException(404, f"No usable profile for user '{user_id}'")
+    rows = rows.tail(days)
+    return {
+        "user_id": user_id,
+        "score_history": [
+            {
+                "date": r["window_end_date"],
+                "score": round(float(r["rule_score"]) * 100),
+                "recommendation": r["rule_recommendation"],
+            }
+            for _, r in rows.iterrows()
+        ],
+    }
+
+@app.get("/api/audit/{user_id}")
+def get_audit(user_id: str):
+    row = STORE.latest_profile(user_id)
+    rule = rule_assess(row)
+    score = round(rule.score * 100)
+    fired = sorted(rule.fired(), key=lambda c: -abs(c.delta))
+
+    demo = STORE.demo.loc[user_id] if user_id in STORE.demo.index else None
+
+    def _demo(key):
+        if demo is None:
+            return None
+        v = demo.get(key)
+        return None if (v is None or pd.isna(v) or v == "Unknown") else str(v)
+
+    checks = [
+        {
+            "signal": FEATURE_LABELS.get(c.signal, c.signal),
+            "value": _fmt_feature(c.signal, c.value),
+            "message": c.message,
+            "delta": round(float(c.delta), 3),
+            "citation": c.citation,
+            "passed": c.delta > 0,
+        }
+        for c in fired
+    ]
+
+    # "What moved the score": SHAP attributions when the ML stack is up,
+    # otherwise the transparent rule deltas.
+    moved = {
+        "source": "rules",
+        "items": [
+            {
+                "label": FEATURE_LABELS.get(c.signal, c.signal),
+                "value": _fmt_feature(c.signal, c.value),
+                "impact": round(float(c.delta), 3),
+            }
+            for c in fired
+        ],
+    }
+    explanation = {"text": _rule_narrative(rule), "source": "rules", "faithfulness_score": None}
+    ml_confidence = None
+    if STORE.explainer is not None:
+        try:
+            ev = STORE.explainer.build_evidence(row)
+            ml_confidence = round(float(ev["ml_confidence"]), 2)
+            moved = {
+                "source": "shap",
+                "items": [
+                    {
+                        "label": FEATURE_LABELS.get(c.feature, c.feature),
+                        "value": _fmt_feature(c.feature, c.value),
+                        "impact": round(float(c.shap_value), 3),
+                    }
+                    for c in ev["shap_ranking"]
+                ],
+            }
+            use_llm = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+            exp = STORE.explainer.explain(row, expertise="novice", use_llm=use_llm)
+            explanation = {
+                "text": exp.text,
+                "source": exp.source,
+                "faithfulness_score": None if exp.faithfulness_score is None
+                                      else round(exp.faithfulness_score, 2),
+            }
+        except Exception:
+            pass
+
+    fairness = None
+    fairness_path = PROCESSED / "fairness_report.json"
+    if fairness_path.exists():
+        try:
+            fairness = json.loads(fairness_path.read_text())
+        except Exception:
+            fairness = None
+
+    history = (
+        STORE.usable[STORE.usable["user_id"] == user_id]
+        .sort_values("window_end_date", ascending=False)
+        .head(8)
+    )
+    records = [
+        {
+            "window_end_date": r["window_end_date"],
+            "score": round(float(r["rule_score"]) * 100),
+            "recommendation": r["rule_recommendation"],
+            "sleep_change_pct": _clean(r.get("sleep_change_pct")),
+            "hr_elevation_bpm": _clean(r.get("hr_elevation_bpm")),
+            "training_load_ratio": _clean(r.get("training_load_ratio")),
+        }
+        for _, r in history.iterrows()
+    ]
+
+    raw_cols = [
+        "user_id", "window_end_date", "sleep_avg_7d", "resting_hr_avg_7d",
+        "rmssd_avg_7d", "sleep_efficiency_avg_7d", "steps_avg_7d",
+        "active_minutes_avg_7d", "workouts_count", "sleep_change_pct",
+        "hr_elevation_bpm", "training_load_ratio", "rule_score",
+    ]
+    raw_rows = []
+    for _, r in history.head(6).iterrows():
+        raw_rows.append([
+            r[c] if c in ("user_id", "window_end_date")
+            else (None if pd.isna(r[c]) else round(float(r[c]), 2))
+            for c in raw_cols
+        ])
+
+    sources = int(STORE.daily["source"].nunique()) if "source" in STORE.daily.columns else 1
+
+    return {
+        "user_id": user_id,
+        "display_name": display_name(user_id),
+        "gender": _demo("gender"),
+        "age_group": _demo("age_group"),
+        "sport_type": _demo("sport_type"),
+        "window_end_date": row["window_end_date"],
+        "score": score,
+        "label": score_to_band(rule.score),
+        "recommendation": rule.recommendation,
+        "ml_confidence": ml_confidence,
+        "checks": checks,
+        "moved": moved,
+        "explanation": explanation,
+        "fairness": fairness,
+        "records": records,
+        "raw": {"columns": raw_cols, "rows": raw_rows},
+        "dataset": {
+            "users": int(STORE.usable["user_id"].nunique()),
+            "records": int(len(STORE.usable)),
+            "sources": sources,
+        },
     }
 
 @app.get("/")
