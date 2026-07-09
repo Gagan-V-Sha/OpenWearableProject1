@@ -50,5 +50,47 @@ The goal isn't just prediction — it's **recovery guidance people can trust**.
 - Python, FastAPI, pandas, scikit-learn, XGBoost, SHAP, DiCE
 - Deployed on Vercel
 
+<<<<<<< HEAD
 ```
 
+=======
+## Project structure
+
+```
+api.py              # FastAPI server
+pipeline.py         # Full data + training pipeline
+rule_engine.py      # Recovery scoring rules
+data/
+  lifesnaps/        # Raw LifeSnaps data
+  processed/        # Processed CSVs for the API
+models/             # Trained models
+vercel/             # Deployment config
+```
+
+## Run locally
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn api:app --reload --port 8000
+```
+
+API docs: http://localhost:8000/docs
+
+## Main API endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/users` | List users |
+| `GET /api/dashboard/{user_id}` | Score, metrics, trends |
+| `POST /api/whatif` | Slider counterfactual |
+| `GET /api/suggestions/{user_id}` | DiCE suggestions |
+| `POST /api/ask` | Plain-language Q&A |
+
+Set `GEMINI_API_KEY` in `.env` (see `vercel/environment.example`) for the Ask feature.
+
+---
+
+**OpenWearable** — wearable recovery intelligence you can explain, check, and trust.
+>>>>>>> 2d9df60 (Update project files)
