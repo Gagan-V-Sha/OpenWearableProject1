@@ -1,8 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pip install --no-cache-dir -r requirements.txt",
   "functions": {
     "api.py": {
-      "maxDuration": 60,
+      "maxDuration": 120,
       "excludeFiles": "data/lifesnaps/**,vercel/**"
     }
   }
