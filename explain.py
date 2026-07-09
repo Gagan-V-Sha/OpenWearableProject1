@@ -8,7 +8,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import shap
 import xgboost as xgb
 from dotenv import load_dotenv
 
@@ -72,7 +71,12 @@ class ExplanationEngine:
             )
         self.model = xgb.XGBClassifier()
         self.model.load_model(str(model_path))
-        self.explainer = shap.TreeExplainer(self.model)
+        self.explainer = None
+        try:
+            import shap
+            self.explainer = shap.TreeExplainer(self.model)
+        except ImportError:
+            pass
 
     def _predict(self, X: pd.DataFrame) -> tuple[int, float]:
         proba = self.model.predict_proba(X)[0]
@@ -80,6 +84,8 @@ class ExplanationEngine:
         return cls, float(proba[cls])
 
     def _shap_for_class(self, X: pd.DataFrame, cls: int) -> np.ndarray:
+        if self.explainer is None:
+            return np.zeros(len(FEATURES))
         sv = self.explainer.shap_values(X)
         if isinstance(sv, list):
             return np.asarray(sv[cls])[0]

@@ -43,7 +43,10 @@ class Store:
             if DEMO_PATH.exists() else pd.DataFrame()
         )
         self.explainer = ExplanationEngine()
-        self.suggester = SuggestionEngine()
+        try:
+            self.suggester = SuggestionEngine()
+        except Exception:
+            self.suggester = None
 
         self.iso = None
         if ISO_PATH.exists():
@@ -358,6 +361,8 @@ def post_ask(req: AskRequest):
 
 @app.get("/api/suggestions/{user_id}")
 def get_suggestions(user_id: str):
+    if STORE.suggester is None:
+        raise HTTPException(503, "Suggestions are not available on this deployment.")
     row = STORE.latest_profile(user_id)
     res = STORE.suggester.suggest(row)
     return {
