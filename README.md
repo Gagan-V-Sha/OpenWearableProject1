@@ -58,5 +58,3 @@ python -m venv .venv
 pip install -r requirements.txt
 uvicorn api:app --reload --port 8000
 
-**OpenWearable** — wearable recovery intelligence you can explain, check, and trust.
->>>>>>> 2d9df60 (Update project files)
