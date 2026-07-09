@@ -3,7 +3,7 @@
   "functions": {
     "api.py": {
       "maxDuration": 60,
-      "excludeFiles": "data/lifesnaps/**,data/eda_plots/**,vercel/**"
+      "excludeFiles": "vercel/**"
     }
   }
 }
