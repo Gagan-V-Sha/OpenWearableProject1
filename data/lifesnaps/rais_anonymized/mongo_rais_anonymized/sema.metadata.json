@@ -1,0 +1,1 @@
+{"options":{},"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_","ns":"raisV3_anonymized.sema"}],"uuid":"240427a8585849ddacd16abc1a3bb748"}
