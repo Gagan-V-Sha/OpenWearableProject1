@@ -1,5 +1,4 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "cp vercel/pyproject.toml pyproject.toml",
   "functions": {
     "api.py": {
