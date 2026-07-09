@@ -1,10 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "pip install --no-cache-dir -r requirements-vercel.txt && pip uninstall -y nvidia-nccl-cu12 nvidia-cublas-cu12 nvidia-cuda-runtime-cu12 2>/dev/null || true",
   "functions": {
     "api.py": {
       "maxDuration": 120,
-      "excludeFiles": "data/lifesnaps/**,vercel/**,eda.py,pipeline.py,preprocess.py,train_models.py,fairness_audit.py,faithfulness.py,import_fitbit.py,build_profiles.py,requirements.txt"
+      "excludeFiles": "data/lifesnaps/**,vercel/**,models/**,eda.py,pipeline.py,preprocess.py,train_models.py,fairness_audit.py,faithfulness.py,import_fitbit.py,build_profiles.py,explain.py,suggest.py,requirements.txt,requirements-vercel.txt"
     }
   }
 }

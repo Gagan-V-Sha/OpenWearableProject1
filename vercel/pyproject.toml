@@ -2,6 +2,15 @@
 name = "open-wearable-project1"
 version = "1.0.0"
 requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2.0.0,<3.0",
+    "numpy>=1.26.0,<2.0",
+    "fastapi>=0.108.0",
+    "uvicorn>=0.25.0",
+    "pydantic>=2.5.0",
+    "python-dotenv>=1.0.0",
+    "google-genai>=1.0.0",
+]
 
 [tool.vercel]
 entrypoint = "api:app"

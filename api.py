@@ -13,10 +13,23 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from explain import ExplanationEngine
 from features import FEATURES
 from rule_engine import INTENSIVE_THRESHOLD, REST_THRESHOLD, assess as rule_assess
-from suggest import RECOVERY_BAND, SuggestionEngine
+
+try:
+    from explain import ExplanationEngine
+except ImportError:
+    ExplanationEngine = None
+
+try:
+    from suggest import RECOVERY_BAND, SuggestionEngine
+except ImportError:
+    RECOVERY_BAND = {
+        "Rest Day": "Poor",
+        "Light Activity": "Moderate",
+        "Intensive Training": "Good",
+    }
+    SuggestionEngine = None
 
 ROOT = Path(__file__).resolve().parent
 PROCESSED = ROOT / "data" / "processed"
@@ -42,16 +55,26 @@ class Store:
             pd.read_csv(DEMO_PATH).set_index("user_id")
             if DEMO_PATH.exists() else pd.DataFrame()
         )
-        self.explainer = ExplanationEngine()
-        try:
-            self.suggester = SuggestionEngine()
-        except Exception:
-            self.suggester = None
+        self.explainer = None
+        if ExplanationEngine is not None:
+            try:
+                self.explainer = ExplanationEngine()
+            except Exception:
+                self.explainer = None
+        self.suggester = None
+        if SuggestionEngine is not None:
+            try:
+                self.suggester = SuggestionEngine()
+            except Exception:
+                self.suggester = None
 
         self.iso = None
         if ISO_PATH.exists():
-            with open(ISO_PATH, "rb") as f:
-                self.iso = pickle.load(f)
+            try:
+                with open(ISO_PATH, "rb") as f:
+                    self.iso = pickle.load(f)
+            except Exception:
+                self.iso = None
 
         self.usable = self.profiles.dropna(subset=[c for c in FEATURES if c != "rmssd_avg_7d"])
 
@@ -129,11 +152,29 @@ def _anomaly(row: pd.Series) -> bool | None:
     X = pd.DataFrame([{f: row.get(f, np.nan) for f in STORE.iso["features"]}])[STORE.iso["features"]]
     return bool(int(STORE.iso["model"].predict(X)[0]) == -1)
 
+def _rule_narrative(rule) -> str:
+    fired = sorted(rule.fired(), key=lambda c: -abs(c.delta))
+    rec = rule.recommendation
+    lead = {
+        "Rest Day": "Your body looks like it needs a rest today.",
+        "Light Activity": "A light, easy session is the sweet spot for you today.",
+        "Intensive Training": "You look well recovered and ready for a hard session.",
+    }[rec]
+    reasons = [c.message.rstrip(".") for c in fired[:2]]
+    why = (" Mainly because " + "; and ".join(r.lower() for r in reasons) + ".") if reasons else ""
+    return lead + why
+
 @app.get("/api/dashboard/{user_id}")
 def get_dashboard(user_id: str, days: int = 30):
     row = STORE.latest_profile(user_id)
     rule = rule_assess(row)
-    exp = STORE.explainer.explain(row, expertise="novice")
+    if STORE.explainer is not None:
+        exp = STORE.explainer.explain(row, expertise="novice")
+        narrative = exp.text
+        ml_rec = exp.recommendation
+    else:
+        narrative = _rule_narrative(rule)
+        ml_rec = rule.recommendation
 
     fired = sorted(rule.fired(), key=lambda c: -abs(c.delta))
     basis = [f"{c.message.rstrip('.')} ({c.citation})" for c in fired[:3]]
@@ -148,12 +189,12 @@ def get_dashboard(user_id: str, days: int = 30):
         "score": round(rule.score * 100),
         "label": score_to_band(rule.score),
         "recommendation": rule.recommendation,
-        "narrative": exp.text,
+        "narrative": narrative,
         "explanation": ("Based on: " + "; ".join(basis) + ".") if basis else
                        "No strong recovery signals fired this week.",
         "ml": {
-            "recommendation": exp.recommendation,
-            "agrees": exp.recommendation == rule.recommendation,
+            "recommendation": ml_rec,
+            "agrees": ml_rec == rule.recommendation,
             "anomaly": _anomaly(row),
         },
         "current": {f: _clean(row.get(f)) for f in FEATURES},
