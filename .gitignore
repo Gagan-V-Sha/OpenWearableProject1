@@ -1,5 +1,6 @@
 ﻿data/figshare/raw_data.zip
-data/lifesnaps/
+data/lifesnaps/rais_anonymized.zip
+data/lifesnaps/mongo_rais_anonymized/
 data/bidsleep/
 
 __pycache__/
