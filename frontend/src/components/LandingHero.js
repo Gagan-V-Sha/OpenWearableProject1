@@ -5,7 +5,7 @@ function scrollTo(id) {
 }
 
 export default function LandingHero({ data }) {
-  // Falls back to the canonical project example while data loads.
+
   const score = data?.score ?? 42;
   const label = data?.label ?? "Poor";
   const rec = data?.recommendation ?? "Rest Day";

@@ -48,7 +48,6 @@ body {
   font-size: 12px;
 }
 
-/* ---- Header ---- */
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -123,7 +122,6 @@ body {
   cursor: not-allowed;
 }
 
-/* ---- Landing hero ---- */
 .hero {
   display: grid;
   grid-template-columns: 1.1fr 1fr;
@@ -286,7 +284,6 @@ body {
   color: var(--text);
 }
 
-/* ---- Dashboard wrapper ---- */
 .dash {
   display: flex;
   flex-direction: column;
@@ -350,7 +347,6 @@ body {
   font-weight: 600;
 }
 
-/* ---- Greeting ---- */
 .greeting-date {
   color: var(--muted);
   font-size: 12px;
@@ -364,7 +360,6 @@ body {
   font-weight: 700;
 }
 
-/* ---- Score row ---- */
 .score-grid {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
@@ -478,7 +473,6 @@ body {
   font-size: 11px;
 }
 
-/* ---- Sections ---- */
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -511,7 +505,6 @@ body {
   cursor: default;
 }
 
-/* ---- Metric cards ---- */
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -559,7 +552,6 @@ body {
   color: var(--muted);
 }
 
-/* ---- Trends ---- */
 .segmented {
   display: flex;
   background: var(--card2);
@@ -622,7 +614,6 @@ body {
   text-align: center;
 }
 
-/* ---- What if ---- */
 .whatif-card {
   display: grid;
   grid-template-columns: 1fr 220px;
@@ -681,7 +672,6 @@ input[type="range"].range-orange {
   padding-left: 24px;
 }
 
-/* ---- Ask ---- */
 .ask-card h3 {
   margin: 0 0 4px;
 }
@@ -760,7 +750,6 @@ input[type="range"].range-orange {
   cursor: default;
 }
 
-/* ---- States ---- */
 .loading {
   color: var(--muted);
   text-align: center;

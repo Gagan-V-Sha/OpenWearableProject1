@@ -1,12 +1,4 @@
-# FastAPI backend for the frontend.
-#
-# Serves  frontend/src/api.js:
-#   GET  /api/users                    -> user list for the dropdown
-#   GET  /api/dashboard/{user_id}      -> score, recommendation, metrics, daily series
-#   POST /api/whatif                   -> slider counterfactual (rule engine re-score)
-#   POST /api/ask                      -> plain-language Q&A about the scores
-#   GET  /api/suggestions/{user_id}    -> DiCE counterfactual suggestions
-# Run locally:  uvicorn api:app --reload --port 8000
+
 
 from __future__ import annotations
 
@@ -42,11 +34,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-
-# Data / model loading
-
-
 class Store:
     def __init__(self):
         self.profiles = pd.read_csv(PROFILE_PATH)
@@ -61,9 +48,8 @@ class Store:
         self.iso = None
         if ISO_PATH.exists():
             with open(ISO_PATH, "rb") as f:
-                self.iso = pickle.load(f)  # {"model", "features"}
+                self.iso = pickle.load(f)
 
-        # Only rows where the model/rules can actually run.
         self.usable = self.profiles.dropna(subset=[c for c in FEATURES if c != "rmssd_avg_7d"])
 
     def latest_profile(self, user_id: str) -> pd.Series:
@@ -72,12 +58,10 @@ class Store:
             raise HTTPException(404, f"No usable profile for user '{user_id}'")
         return rows.sort_values("window_end_date").iloc[-1]
 
-
 STORE = Store()
 
-
 def _clean(v):
-#NaN-safe conversion for JSON.
+
     if v is None:
         return None
     if isinstance(v, (np.floating, float)):
@@ -86,12 +70,10 @@ def _clean(v):
         return int(v)
     return v
 
-
 def display_name(user_id: str) -> str:
     if not user_id.startswith("LS_"):
         return user_id
     return f"Athlete {user_id[-4:].upper()}"
-
 
 def score_to_band(score01: float) -> str:
     if score01 < REST_THRESHOLD:
@@ -99,9 +81,6 @@ def score_to_band(score01: float) -> str:
     if score01 < INTENSIVE_THRESHOLD:
         return "Moderate"
     return "Good"
-
-# GET /api/users
-
 
 @app.get("/api/users")
 def get_users():
@@ -117,15 +96,10 @@ def get_users():
         })
     return users
 
-
-# GET /api/dashboard/{user_id}
-
-
 def _daily_series(user_id: str, end_date: str, days: int) -> pd.DataFrame:
     d = STORE.daily[STORE.daily["user_id"] == user_id].copy()
     d = d[d["date"] <= end_date].sort_values("date").tail(days)
     return d
-
 
 def _steps_change_pct(daily: pd.DataFrame) -> float | None:
     steps = daily["steps"].where(daily["steps"] > 0)
@@ -137,7 +111,6 @@ def _steps_change_pct(daily: pd.DataFrame) -> float | None:
         return None
     return float((last7.mean() - prev_mean) / prev_mean * 100.0)
 
-
 def _load_level(ratio: float | None) -> str:
     if ratio is None:
         return "Unknown"
@@ -147,13 +120,11 @@ def _load_level(ratio: float | None) -> str:
         return "Low"
     return "Balanced"
 
-
 def _anomaly(row: pd.Series) -> bool | None:
     if STORE.iso is None:
         return None
     X = pd.DataFrame([{f: row.get(f, np.nan) for f in STORE.iso["features"]}])[STORE.iso["features"]]
     return bool(int(STORE.iso["model"].predict(X)[0]) == -1)
-
 
 @app.get("/api/dashboard/{user_id}")
 def get_dashboard(user_id: str, days: int = 30):
@@ -216,18 +187,13 @@ def get_dashboard(user_id: str, days: int = 30):
         ],
     }
 
-
-# POST /api/whatif
-
-
 class WhatIfRequest(BaseModel):
     user_id: str
     sleep_hours: float
     training_load_ratio: float
 
-
 def _counterfactual_row(row: pd.Series, sleep_hours: float, load_ratio: float) -> dict:
-#Apply the slider values and keep derived features consistent (same coupling logic as the DiCE layer in suggest.py).
+
     cf = {f: row.get(f, np.nan) for f in FEATURES}
     cf["sleep_avg_7d"] = sleep_hours
     cf["training_load_ratio"] = load_ratio
@@ -240,7 +206,6 @@ def _counterfactual_row(row: pd.Series, sleep_hours: float, load_ratio: float) -
     if pd.notna(prev_active) and prev_active > 0:
         cf["active_minutes_avg_7d"] = load_ratio * prev_active
     return cf
-
 
 @app.post("/api/whatif")
 def post_whatif(req: WhatIfRequest):
@@ -281,21 +246,15 @@ def post_whatif(req: WhatIfRequest):
         "delta": delta,
     }
 
-
-
-# POST /api/ask  — intent-routed, template-based Q&A
-
 class AskRequest(BaseModel):
     user_id: str
     question: str
 
-
 def _fmt_signed(v: float, digits: int = 0, suffix: str = "") -> str:
     return f"{v:+.{digits}f}{suffix}"
 
-
 def _answer_recovering(row: pd.Series, rule) -> str:
-#Am I recovering well?
+
     band = score_to_band(rule.score)
     lead = {
         "Poor": "Your recovery appears below your usual baseline",
@@ -325,7 +284,6 @@ def _answer_recovering(row: pd.Series, rule) -> str:
     return (f"{lead}{because}. Recovery score: {round(rule.score * 100)}/100 "
             f"({band}), so today's guidance is: {rule.recommendation}.")
 
-
 def _answer_why(row: pd.Series, rule) -> str:
     fired = sorted(rule.fired(), key=lambda c: -abs(c.delta))
     if not fired:
@@ -335,7 +293,6 @@ def _answer_why(row: pd.Series, rule) -> str:
              for c in fired[:4]]
     return (f"Your recovery score is {round(rule.score * 100)}/100 ({score_to_band(rule.score)}), "
             f"which maps to '{rule.recommendation}'. The signals behind it:\n" + "\n".join(lines))
-
 
 def _answer_bands() -> str:
     return (
@@ -348,7 +305,6 @@ def _answer_bands() -> str:
         "cleared for Intensive Training."
     )
 
-
 def _answer_method() -> str:
     return (
         "The score starts at 50 and transparent, research-backed rules move it up or down: "
@@ -360,7 +316,6 @@ def _answer_method() -> str:
         "no black box."
     )
 
-
 def _answer_improve(row: pd.Series) -> str:
     res = STORE.suggester.suggest(row)
     if not res.suggestions:
@@ -369,7 +324,6 @@ def _answer_improve(row: pd.Series) -> str:
     return ("Here is what the model says would actually change your outcome "
             "(counterfactuals computed with DiCE):\n" + "\n".join(lines))
 
-
 def _answer_fallback(row: pd.Series, rule) -> str:
     return (
         f"Your recovery today is {round(rule.score * 100)}/100 "
@@ -377,7 +331,6 @@ def _answer_fallback(row: pd.Series, rule) -> str:
         "You can ask me things like 'Am I recovering well?', 'Why is my recovery low?', "
         "'How is the score calculated?' or 'What should I change to improve it?'."
     )
-
 
 @app.post("/api/ask")
 def post_ask(req: AskRequest):
@@ -403,10 +356,6 @@ def post_ask(req: AskRequest):
 
     return {"answer": answer}
 
-
-
-# GET /api/suggestions/{user_id}  — DiCE counterfactual suggestions
-
 @app.get("/api/suggestions/{user_id}")
 def get_suggestions(user_id: str):
     row = STORE.latest_profile(user_id)
@@ -431,7 +380,6 @@ def get_suggestions(user_id: str):
             for s in res.suggestions
         ],
     }
-
 
 @app.get("/")
 def health():

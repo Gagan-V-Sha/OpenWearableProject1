@@ -65,7 +65,7 @@ export function SparkBars({ values, color = "var(--accent)", width = 170, height
 
 export function BarChart({ values, color = "var(--accent)", height = 90 }) {
   const vals = (values || []).map((v) => (v == null ? 0 : v));
-  const width = 100; // percentage-based viewBox so it stretches
+  const width = 100;
   if (vals.length === 0) return <div style={{ height }} />;
   const max = Math.max(...vals, 1);
   const gap = vals.length > 12 ? 1 : 2.5;
@@ -97,7 +97,7 @@ export function BarChart({ values, color = "var(--accent)", height = 90 }) {
 }
 
 export function LineChart({ points, height = 180 }) {
-  // points: [{ date, value }]
+
   const data = (points || []).filter((p) => p.value != null);
   if (data.length < 2) {
     return <div className="chart-empty">Not enough heart-rate data for this range.</div>;

@@ -1,4 +1,4 @@
-# Train the XGBoost classifier and the Isolation Forest for anomaly detection.
+
 
 from pathlib import Path
 import pickle
@@ -21,7 +21,6 @@ PROCESSED = DATA / "processed"
 MODELS_DIR = ROOT / "models"
 PROFILE_PATH = PROCESSED / "profiles_7day.csv"
 
-
 def train_models():
     if not PROFILE_PATH.exists():
         raise FileNotFoundError(f"Cannot find profile data at {PROFILE_PATH}")
@@ -29,7 +28,6 @@ def train_models():
     print("Loading profiles data...")
     df = pd.read_csv(PROFILE_PATH)
 
-    # rmssd_avg_7d may be NaN, XGBoost handles it.
     labeled = df.dropna(subset=[TARGET]).copy()
     labeled = labeled.dropna(subset=[f for f in FEATURES if f != "rmssd_avg_7d"])
     print(f"Training target: {TARGET!r}")
@@ -39,7 +37,6 @@ def train_models():
     y = labeled[TARGET].map(LABEL_MAP)
     groups = labeled["user_id"]
 
-    # Split BY USER so no user's overlapping 7-day windows appear in both train and test (Here there was mix which is why the accuracy was so high!).
     gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
     train_idx, test_idx = next(gss.split(X, y, groups=groups))
     X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
@@ -47,16 +44,14 @@ def train_models():
 
     print(f"Train: {len(X_train)} rows / {groups.iloc[train_idx].nunique()} users | "
           f"Test: {len(X_test)} rows / {groups.iloc[test_idx].nunique()} users")
-    assert set(groups.iloc[train_idx]).isdisjoint(set(groups.iloc[test_idx])), \
+    assert set(groups.iloc[train_idx]).isdisjoint(set(groups.iloc[test_idx])),\
         "User leakage between train and test!"
 
-    # Class imbalance handled with balanced sample weights.
     label_names = {v: k for k, v in LABEL_MAP.items()}
     print("Train class counts:",
           {label_names[k]: int(v) for k, v in zip(*np.unique(y_train, return_counts=True))})
     sample_weight = compute_sample_weight(class_weight="balanced", y=y_train)
 
-    # Fairness feedback loop: fold in reweighing factors emitted by a flagged fairness audit
     weights_path = PROCESSED / "fairness_weights.csv"
     if weights_path.exists():
         fw = pd.read_csv(weights_path)
@@ -93,7 +88,6 @@ def train_models():
         zero_division=0,
     ))
 
-    # Secondary metric: agreement with human self-reports on users.
     if TARGET == "rule_recommendation" and "recommendation" in labeled.columns:
         sema = labeled.iloc[test_idx].dropna(subset=["recommendation"])
         if len(sema):
@@ -104,7 +98,6 @@ def train_models():
                   f"({len(sema)} labeled days) - reported as a secondary finding, "
                   f"not the headline metric.")
 
-    # Isolation Forest — on training not on test.
     print("\nTraining Isolation Forest (Anomaly Detection)")
     iso_features = [f for f in FEATURES if f != "rmssd_avg_7d"]
     iso_model = IsolationForest(contamination=0.05, random_state=42)
@@ -119,7 +112,6 @@ def train_models():
     with open(MODELS_DIR / "isolation_forest.pkl", "wb") as f:
         pickle.dump({"model": iso_model, "features": iso_features}, f)
     print(f"\nModels successfully saved to {MODELS_DIR}/")
-
 
 if __name__ == "__main__":
     train_models()

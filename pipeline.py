@@ -1,16 +1,4 @@
-# End-to-end HCAI response pipeline.
-#
-# Ties the layers together for a single user profile:
-#   1. ML prediction (XGBoost surrogate of the rule engine)
-#   2. Anomaly check (Isolation Forest)
-#   3. Transparent rule-engine reasoning
-#   4. SHAP-grounded, expertise-adaptive explanation (novice / expert)
-#   5. Faithfulness gate (suppress hallucinated LLM output -> verified template)
-#
-# The DiCE suggestion layer is maintained separately (see suggest.py, owned by
-# another contributor) and is not imported here.
-#
-# Run the fairness audit separately with:  python fairness_audit.py
+
 
 from __future__ import annotations
 
@@ -28,14 +16,12 @@ PROCESSED = ROOT / "data" / "processed"
 PROFILE_PATH = PROCESSED / "profiles_7day.csv"
 ISO_PATH = ROOT / "models" / "isolation_forest.pkl"
 
-
 def _load_iso():
     if not ISO_PATH.exists():
         return None
     with open(ISO_PATH, "rb") as f:
         bundle = pickle.load(f)
-    return bundle  # {"model", "features"}
-
+    return bundle
 
 def respond(row: pd.Series, expertise: str = "expert", use_llm: bool = False) -> dict:
     explainer = ExplanationEngine()
@@ -49,7 +35,6 @@ def respond(row: pd.Series, expertise: str = "expert", use_llm: bool = False) ->
         anomaly = int(iso["model"].predict(Xa)[0]) == -1
 
     return {"explanation": exp, "anomaly": anomaly}
-
 
 def _print_response(row: pd.Series, expertise: str, use_llm: bool):
     r = respond(row, expertise=expertise, use_llm=use_llm)
@@ -65,7 +50,6 @@ def _print_response(row: pd.Series, expertise: str, use_llm: bool):
           + "]:")
     print("  " + exp.text.replace("\n", "\n  "))
     print()
-
 
 if __name__ == "__main__":
     import sys

@@ -1,5 +1,4 @@
-# Explanation Generator.
-# Turns the ML prediction + SHAP feature attributions + transparent rule engine reasoning into natural language, adapted to the user's expertise level (novice / expert).
+
 
 from __future__ import annotations
 
@@ -23,7 +22,6 @@ MODEL_PATH = ROOT / "models" / "xgboost_recovery.json"
 
 INT_TO_LABEL = {v: k for k, v in LABEL_MAP.items()}
 
-# Model features names
 FEATURE_LABELS = {
     "sleep_change_pct": "sleep change vs. baseline",
     "hr_elevation_bpm": "resting heart-rate change",
@@ -40,7 +38,6 @@ FEATURE_LABELS = {
 
 EXPERTISE_LEVELS = ("novice", "expert")
 
-
 @dataclass
 class ShapContribution:
     feature: str
@@ -55,7 +52,6 @@ class ShapContribution:
             return "counts against"
         return "neutral for"
 
-
 @dataclass
 class Explanation:
     recommendation: str
@@ -68,7 +64,6 @@ class Explanation:
     faithfulness_score: float | None = None
     suppressed: bool = False
 
-
 class ExplanationEngine:
     def __init__(self, model_path: Path = MODEL_PATH):
         if not model_path.exists():
@@ -79,7 +74,6 @@ class ExplanationEngine:
         self.model.load_model(str(model_path))
         self.explainer = shap.TreeExplainer(self.model)
 
-    # core numeric evidence
     def _predict(self, X: pd.DataFrame) -> tuple[int, float]:
         proba = self.model.predict_proba(X)[0]
         cls = int(np.argmax(proba))
@@ -87,12 +81,12 @@ class ExplanationEngine:
 
     def _shap_for_class(self, X: pd.DataFrame, cls: int) -> np.ndarray:
         sv = self.explainer.shap_values(X)
-        if isinstance(sv, list):          # list of (n, features) per class
+        if isinstance(sv, list):
             return np.asarray(sv[cls])[0]
         sv = np.asarray(sv)
-        if sv.ndim == 3:                  # (n, features, classes)
+        if sv.ndim == 3:
             return sv[0, :, cls]
-        return sv[0]                      # (n, features)
+        return sv[0]
 
     def _rank_shap(self, row: pd.Series, shap_vals: np.ndarray, top_k: int) -> list[ShapContribution]:
         contribs = [
@@ -102,7 +96,6 @@ class ExplanationEngine:
         contribs.sort(key=lambda c: -abs(c.shap_value))
         return contribs[:top_k]
 
-    # public API
     def build_evidence(self, row: pd.Series, top_k: int = 4) -> dict:
         X = pd.DataFrame([{f: row.get(f, np.nan) for f in FEATURES}])[FEATURES]
         cls, conf = self._predict(X)
@@ -144,8 +137,6 @@ class ExplanationEngine:
                 exp.suppressed = result.suppressed
         return exp
 
-
-# deterministic template
 def _fmt(feature: str, value: float) -> str:
     if pd.isna(value):
         return f"{FEATURE_LABELS.get(feature, feature)} (not available)"
@@ -161,7 +152,6 @@ def _fmt(feature: str, value: float) -> str:
     }
     return f"{FEATURE_LABELS.get(feature, feature)} = {units.get(feature, f'{value:.1f}')}"
 
-
 def render_template(ev: dict, expertise: str) -> str:
     rec = ev["recommendation"]
     conf = ev["ml_confidence"]
@@ -169,7 +159,6 @@ def render_template(ev: dict, expertise: str) -> str:
     ranking: list[ShapContribution] = ev["shap_ranking"]
     fired = rule.fired()
 
-    # Surface the signals that actually push TOWARD the recommendation: negative contributions justify resting, positive ones justify training.
     if rec == "Rest Day":
         aligned = [c for c in fired if c.delta < 0]
     elif rec == "Intensive Training":
@@ -188,7 +177,6 @@ def render_template(ev: dict, expertise: str) -> str:
         why = (" Mainly because " + "; and ".join(r.lower() for r in reasons) + ".") if reasons else ""
         return lead + why
 
-    # expert
     shap_lines = [
         f"  - {FEATURE_LABELS.get(c.feature, c.feature)} ({_fmt(c.feature, c.value)}): "
         f"SHAP {c.shap_value:+.3f}, {c.direction} this recommendation"
@@ -205,8 +193,6 @@ def render_template(ev: dict, expertise: str) -> str:
         f"Rule-engine contributions:\n" + ("\n".join(rule_lines) if rule_lines else "  (no rules fired)")
     )
 
-
-# LLM phrase generation (Google Gemini)
 def _try_llm(ev: dict, expertise: str) -> str | None:
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
@@ -242,10 +228,9 @@ def _try_llm(ev: dict, expertise: str) -> str | None:
             contents=prompt,
         )
         return (resp.text or "").strip() or None
-    except Exception as e:  # network/quota/library issues fallback 
+    except Exception as e:
         print(f"[explain] Gemini unavailable ({e}); using template.")
         return None
-
 
 if __name__ == "__main__":
     df = pd.read_csv(ROOT / "data" / "processed" / "profiles_7day.csv")

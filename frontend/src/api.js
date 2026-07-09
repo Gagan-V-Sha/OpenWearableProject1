@@ -1,5 +1,5 @@
-// Set REACT_APP_API_BASE in frontend/.env (or the Vercel dashboard) to point
-// at a hosted backend; defaults to the local dev server.
+
+
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:8000";
 
 async function request(path, options) {

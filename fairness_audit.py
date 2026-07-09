@@ -1,11 +1,4 @@
-# Fairness Audit Layer.
-# After predictions are generated, this module computes two group-fairness
-# metrics across each protected attribute (gender, age group, sport type):
-#
-#   SPD  Statistical Parity Difference
-#   EOD  Equal Opportunity Difference
-#
-# If SPD or EOD exceeds its threshold, the group is FLAGGED and the module reweight sample weights that train_models.py can consume in the next training cycle to reduce the disparity.
+
 
 from __future__ import annotations
 
@@ -27,14 +20,13 @@ REPORT_PATH = PROCESSED / "fairness_report.json"
 WEIGHTS_PATH = PROCESSED / "fairness_weights.csv"
 
 PROTECTED_ATTRS = ["gender", "age_group", "sport_type"]
-FAVORABLE_LABEL = "Intensive Training"   # cleared to train
-TRUTH_COLUMN = "rule_recommendation"     # reference truth for EOD 
+FAVORABLE_LABEL = "Intensive Training"
+TRUTH_COLUMN = "rule_recommendation"
 
 SPD_THRESHOLD = 0.10
 EOD_THRESHOLD = 0.10
-MIN_GROUP_SIZE = 30                      # ignore groups too small to be reliable
+MIN_GROUP_SIZE = 30
 INT_TO_LABEL = {v: k for k, v in LABEL_MAP.items()}
-
 
 def load_scored() -> pd.DataFrame:
     df = pd.read_csv(PROFILE_PATH)
@@ -47,19 +39,16 @@ def load_scored() -> pd.DataFrame:
     df["pred_recommendation"] = [INT_TO_LABEL[int(p)] for p in model.predict(X)]
     return df
 
-
 def _rate_favorable(mask: pd.Series, pred: pd.Series) -> float:
     sub = pred[mask]
     return float((sub == FAVORABLE_LABEL).mean()) if len(sub) else float("nan")
 
-
 def _tpr_favorable(mask: pd.Series, pred: pd.Series, truth: pd.Series) -> float:
-    # TPR for the favorable class = P(pred favorable | truth favorable)
+
     pos = mask & (truth == FAVORABLE_LABEL)
     if pos.sum() == 0:
         return float("nan")
     return float((pred[pos] == FAVORABLE_LABEL).mean())
-
 
 def audit_attribute(df: pd.DataFrame, attr: str) -> dict:
     groups = [g for g, n in df[attr].value_counts().items()
@@ -68,7 +57,6 @@ def audit_attribute(df: pd.DataFrame, attr: str) -> dict:
         return {"attribute": attr, "status": "skipped",
                 "reason": f"fewer than 2 groups with >= {MIN_GROUP_SIZE} samples", "groups": groups}
 
-    # Reference = largest eligible group
     ref = df[attr].value_counts().loc[groups].idxmax()
     pred, truth = df["pred_recommendation"], df[TRUTH_COLUMN]
 
@@ -96,10 +84,8 @@ def audit_attribute(df: pd.DataFrame, attr: str) -> dict:
     return {"attribute": attr, "status": "flagged" if flagged else "ok",
             "reference_group": ref, "favorable_label": FAVORABLE_LABEL, "groups": rows}
 
-
 def kamiran_calders_weights(df: pd.DataFrame, attr: str) -> pd.Series:
-# Reweighing weight each (group, label) cell so the protected attribute becomes statistically independent of the label.
-    
+
     label = df[TRUTH_COLUMN]
     valid = df[attr].notna() & (df[attr].astype(str).str.lower() != "unknown")
     n = valid.sum()
@@ -114,7 +100,6 @@ def kamiran_calders_weights(df: pd.DataFrame, attr: str) -> pd.Series:
         if observed > 0:
             w.loc[cell.index] = expected / observed
     return w
-
 
 def run_audit() -> dict:
     df = load_scored()
@@ -151,7 +136,6 @@ def run_audit() -> dict:
                 flagged_attrs.append(attr)
         print()
 
-    # Emit reweighing for the next training cycle if anything was flagged
     if flagged_attrs:
         primary = flagged_attrs[0]
         weights = kamiran_calders_weights(df, primary)
@@ -174,7 +158,6 @@ def run_audit() -> dict:
     REPORT_PATH.write_text(json.dumps(report, indent=2))
     print(f"\nFull report written to {REPORT_PATH}")
     return report
-
 
 if __name__ == "__main__":
     run_audit()

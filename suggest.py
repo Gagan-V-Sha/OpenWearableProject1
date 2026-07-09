@@ -1,9 +1,5 @@
-# DiCE counterfactual suggestion layer.
-#
-# Uses Diverse Counterfactual Explanations (Mothilal et al.,2020) to turn the XGBoost recovery model into actionable "what-if" advice.
-# How it stays truthful to the model:
-#   1. DiCE searches only over ACTIONABLE lever features (sleep, training load, workouts, sleep efficiency) 
-#   2. Derived model features (sleep_change_pct, active_minutes_avg_7d) are recomputed from the user's own baselines so the counterfactual profile is internally consistent.
+
+
 from __future__ import annotations
 
 import warnings
@@ -23,13 +19,11 @@ MODEL_PATH = ROOT / "models" / "xgboost_recovery.json"
 
 INT_TO_LABEL = {v: k for k, v in LABEL_MAP.items()}
 
-# UI recovery bands corresponding to each training recommendation class.
 RECOVERY_BAND = {
     "Rest Day": "Poor",
     "Light Activity": "Moderate",
     "Intensive Training": "Good",
 }
-
 
 ACTIONABLE_FEATURES = [
     "sleep_avg_7d",
@@ -38,25 +32,21 @@ ACTIONABLE_FEATURES = [
     "sleep_efficiency_avg_7d",
 ]
 
-# Feasibility constraints for the DiCE search. 
 PERMITTED_RANGES = {
-    "sleep_avg_7d": [4.0, 10.0],          # hours per night
-    "training_load_ratio": [0.5, 1.5],    # acute:chronic, capped below danger zone
+    "sleep_avg_7d": [4.0, 10.0],
+    "training_load_ratio": [0.5, 1.5],
     "workouts_count": [0.0, 7.0],
     "sleep_efficiency_avg_7d": [70.0, 98.0],
 }
 
-# Levers where only improvement is acceptable advice.
 IMPROVE_ONLY = ("sleep_avg_7d", "sleep_efficiency_avg_7d")
 
-# Changes smaller than this are treated as "no change" when phrasing advice.
 MIN_DELTA = {
-    "sleep_avg_7d": 10.0 / 60.0,          # 10 minutes
+    "sleep_avg_7d": 10.0 / 60.0,
     "training_load_ratio": 0.05,
     "workouts_count": 1.0,
     "sleep_efficiency_avg_7d": 1.0,
 }
-
 
 @dataclass
 class FeatureChange:
@@ -64,7 +54,6 @@ class FeatureChange:
     before: float
     after: float
     text: str
-
 
 @dataclass
 class CounterfactualSuggestion:
@@ -74,10 +63,9 @@ class CounterfactualSuggestion:
     to_label: str
     from_band: str
     to_band: str
-    from_score: float          # rule recovery score [0, 1]
+    from_score: float
     to_score: float
     cf_features: dict = field(default_factory=dict)
-
 
 @dataclass
 class SuggestionResult:
@@ -86,11 +74,9 @@ class SuggestionResult:
     current_label: str
     current_band: str
     suggestions: list[CounterfactualSuggestion]
-    message: str               # best suggestion or fallback text
-
+    message: str
 
 class SuggestionEngine:
-#Wraps dice-ml around the trained XGBoost recovery classifier.
 
     def __init__(self, model_path: Path = MODEL_PATH, profile_path: Path = PROFILE_PATH):
         import dice_ml
@@ -107,7 +93,6 @@ class SuggestionEngine:
         reference = profiles.dropna(subset=FEATURES).copy()
         self._medians = reference[FEATURES].median()
 
-        # DiCE needs the training frame (for feature ranges / sampling) plus a numeric outcome column matching the model's classes.
         dice_frame = reference[FEATURES].copy()
         dice_frame["recommendation_code"] = reference["rule_recommendation"].map(LABEL_MAP)
 
@@ -121,19 +106,16 @@ class SuggestionEngine:
         )
         self._dice_ml = dice_ml
 
-    # DiCE working
-
-
     def _make_query(self, row: pd.Series | dict) -> pd.DataFrame:
         get = row.get if hasattr(row, "get") else (lambda k, d=None: row.get(k, d))
         values = {f: get(f, np.nan) for f in FEATURES}
         query = pd.DataFrame([values])[FEATURES].astype(float)
-        # DiCE cannot handle NaN inputs (e.g. missing HRV); fall back to the population median while keeping the rmssd_missing flag untouched.
+
         return query.fillna(self._medians)
 
     @staticmethod
     def _permitted_ranges_for(query: pd.DataFrame) -> dict:
-#Per-query ranges: improve-only levers are floored at the current value.
+
         ranges = {k: list(v) for k, v in PERMITTED_RANGES.items()}
         for f in IMPROVE_ONLY:
             lo, hi = ranges[f]
@@ -142,7 +124,7 @@ class SuggestionEngine:
         return ranges
 
     def _run_dice(self, query: pd.DataFrame, desired_class: int, n_cfs: int) -> pd.DataFrame | None:
-#Try the genetic method first (closer, more diverse CFs), fall back to random.
+
         permitted = self._permitted_ranges_for(query)
         for method in ("genetic", "random"):
             try:
@@ -164,7 +146,6 @@ class SuggestionEngine:
         return None
 
     def _apply_coupling(self, cf: pd.Series, base_row: pd.Series | dict) -> pd.Series:
-        """Recompute derived features so the counterfactual profile is consistent."""
         get = base_row.get if hasattr(base_row, "get") else (lambda k, d=None: base_row.get(k, d))
         cf = cf.copy()
 
@@ -179,10 +160,6 @@ class SuggestionEngine:
             cf["active_minutes_avg_7d"] = cf["training_load_ratio"] * prev_active
 
         return cf
-
-
-# Natural-language rendering
-
 
     @staticmethod
     def _change_text(feature: str, before: float, after: float) -> str:
@@ -248,18 +225,13 @@ class SuggestionEngine:
 
     @staticmethod
     def _effort(suggestion: CounterfactualSuggestion) -> float:
-        """Relative size of the asked-for change; smaller = more feasible."""
         scale = {"sleep_avg_7d": 2.0, "training_load_ratio": 0.8,
                  "workouts_count": 4.0, "sleep_efficiency_avg_7d": 15.0}
         return sum(abs(c.after - c.before) / scale[c.feature] for c in suggestion.changes)
 
-
-# Public API
-
-
     def suggest(self, row: pd.Series | dict, total_cfs: int = 3,
                 search_cfs: int = 10) -> SuggestionResult:
-# Generate up to `total_cfs` counterfactual suggestions for one profile row.
+
         get = row.get if hasattr(row, "get") else (lambda k, d=None: row.get(k, d))
         query = self._make_query(row)
         base_cls = int(self.model.predict(query)[0])
@@ -290,14 +262,14 @@ class SuggestionEngine:
         seen: set[tuple] = set()
         for _, cf in raw_cfs.iterrows():
             cf = self._apply_coupling(cf, row)
-            # Truthfulness check: the coupled profile must still reach the target class.
+
             verified_cls = int(self.model.predict(pd.DataFrame([cf])[FEATURES])[0])
             if verified_cls < desired_cls:
                 continue
             s = self._build_suggestion(query, row, cf, base_cls, verified_cls)
             if s is None:
                 continue
-        
+
             if s.to_score < s.from_score - 1e-9:
                 continue
             key = tuple((c.feature, round(c.after, 1)) for c in s.changes)
@@ -315,7 +287,6 @@ class SuggestionEngine:
                               "consistency re-check against the model.")
         return result
 
-
 def _print_result(res: SuggestionResult) -> None:
     print("=" * 72)
     print(f"User {res.user_id} | window end {res.window_end_date}")
@@ -329,7 +300,6 @@ def _print_result(res: SuggestionResult) -> None:
         print(f"Suggestion {i}: {s.message}")
         print(f"  (rule recovery score {s.from_score:.2f} -> {s.to_score:.2f})")
     print()
-
 
 if __name__ == "__main__":
     engine = SuggestionEngine()

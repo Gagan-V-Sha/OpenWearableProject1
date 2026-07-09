@@ -1,4 +1,4 @@
-# Feature definitions used by build_profiles.py and train_models.py.
+
 
 FEATURES = [
     "sleep_change_pct",
@@ -14,11 +14,8 @@ FEATURES = [
     "rmssd_missing",
 ]
 
-# Core features that must be present for a profile row to be usable.
-
 CORE_FEATURES = [f for f in FEATURES if f not in ("rmssd_avg_7d",)]
 
-# Map text recommendations to integers for XGBoost
 LABEL_MAP = {
     "Rest Day": 0,
     "Light Activity": 1,
