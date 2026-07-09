@@ -1,5 +1,5 @@
 {
-  "installCommand": "cp vercel/pyproject.toml pyproject.toml",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api.py": {
       "maxDuration": 60,
