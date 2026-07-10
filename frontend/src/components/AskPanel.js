@@ -46,7 +46,7 @@ export default function AskPanel({ data }) {
         <span className="ask-dot">●</span> Ask about your scores
       </h3>
       <p className="muted">
-        Plain answers — no jargon. Ask why a score or recommendation came back the way it did.
+        Plain answers — no jargon. Ask about your score, recovery, or what to change.
       </p>
 
       <div className="ask-thread">
@@ -76,7 +76,7 @@ export default function AskPanel({ data }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask anything about today's scores…"
+          placeholder="Ask about your recovery, scores, or training…"
         />
         <button type="submit" disabled={busy || !input.trim()}>
           Ask

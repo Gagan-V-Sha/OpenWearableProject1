@@ -382,11 +382,81 @@ def _answer_fallback(row: pd.Series, rule) -> str:
         "'How is the score calculated?' or 'What should I change to improve it?'."
     )
 
+def _ask_facts(row: pd.Series, rule) -> dict:
+    facts = {
+        "recovery_score": round(rule.score * 100),
+        "band": score_to_band(rule.score),
+        "recommendation": rule.recommendation,
+        "rules_fired": [
+            {"signal": c.signal, "message": c.message, "delta": round(float(c.delta), 3)}
+            for c in rule.fired()
+        ],
+        "metrics": {
+            key: None if pd.isna(row.get(key)) else round(float(row[key]), 2)
+            for key in (
+                "sleep_change_pct", "hr_elevation_bpm", "training_load_ratio",
+                "sleep_avg_7d", "resting_hr_avg_7d", "rmssd_avg_7d",
+                "sleep_efficiency_avg_7d", "workouts_count", "steps_avg_7d",
+            )
+        },
+    }
+    if STORE.explainer is not None:
+        try:
+            ev = STORE.explainer.build_evidence(row)
+            facts["ml_recommendation"] = ev["recommendation"]
+            facts["ml_confidence"] = round(float(ev["ml_confidence"]), 3)
+            facts["top_shap"] = [
+                {
+                    "feature": c.feature,
+                    "value": None if pd.isna(c.value) else round(float(c.value), 2),
+                    "shap": round(float(c.shap_value), 3),
+                }
+                for c in ev["shap_ranking"]
+            ]
+        except Exception:
+            pass
+    return facts
+
+def _try_ask_llm(row: pd.Series, rule, question: str) -> str | None:
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        return None
+    try:
+        from google import genai
+
+        client = genai.Client(api_key=api_key)
+        facts = _ask_facts(row, rule)
+        prompt = (
+            "You are Whyable, a friendly recovery coach in the OpenWearable app. "
+            "Answer the user's question in plain language (no jargon, no medical diagnoses). "
+            "Use ONLY the facts in USER_DATA — do not invent numbers or metrics. "
+            "If they ask who you are, introduce yourself briefly and say you explain their "
+            "recovery scores from wearable data. "
+            "If the question is unrelated to recovery, sleep, training, or their data, "
+            "politely redirect to those topics. "
+            "Keep answers to 2-4 short sentences unless they ask for detail.\n\n"
+            f"USER_QUESTION: {question}\n\n"
+            f"USER_DATA:\n{json.dumps(facts, indent=2)}"
+        )
+        resp = client.models.generate_content(
+            model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=prompt,
+        )
+        text = (resp.text or "").strip()
+        return text or None
+    except Exception as e:
+        print(f"[ask] Gemini unavailable ({e}); using template.")
+        return None
+
 @app.post("/api/ask")
 def post_ask(req: AskRequest):
     row = STORE.latest_profile(req.user_id)
     rule = rule_assess(row)
     q = req.question.lower()
+
+    llm_answer = _try_ask_llm(row, rule, req.question)
+    if llm_answer:
+        return {"answer": llm_answer, "source": "llm"}
 
     def has(*words):
         return any(re.search(rf"\b{w}", q) for w in words)
@@ -404,7 +474,7 @@ def post_ask(req: AskRequest):
     else:
         answer = _answer_fallback(row, rule)
 
-    return {"answer": answer}
+    return {"answer": answer, "source": "template"}
 
 @app.get("/api/suggestions/{user_id}")
 def get_suggestions(user_id: str):
