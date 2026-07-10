@@ -441,6 +441,8 @@ def _try_ask_llm(row: pd.Series, rule, question: str,
             "You are Whyable, a recovery coach in the OpenWearable app. "
             "Answer the user's latest question directly in plain language (no jargon, no diagnoses). "
             "Use ONLY the facts in USER_DATA — do not invent numbers or metrics. "
+            "Rule deltas in USER_DATA are on a 0–1 scale (not the 0–100 score); "
+            "do not quote them as 'points' on the 0–100 score. "
             "Do NOT greet the user (no 'Hi', 'Hello', 'Hey'). "
             "Do NOT introduce yourself unless they explicitly ask who or what you are. "
             "If RECENT_CHAT shows you already introduced yourself, never repeat that. "
@@ -462,34 +464,55 @@ def _try_ask_llm(row: pd.Series, rule, question: str,
         print(f"[ask] Gemini unavailable ({e}); using template.")
         return None
 
+def _answer_pushback() -> str:
+    return (
+        "Got it — sorry that wasn't helpful. "
+        "Try a specific question like 'why is my recovery low?' or tap one of the suggestions below."
+    )
+
+def _has_word(q: str, *words: str) -> bool:
+    return any(re.search(rf"\b{w}", q) for w in words)
+
+def _template_answer(row: pd.Series, rule, q: str) -> str | None:
+    if _has_word(q, "improve", "change", "suggest", "better", "should i do", "what should i",
+                 "advice", "fix") and not _has_word(q, "eat", "food", "meal", "diet", "nutrition"):
+        return _answer_improve(row)
+    if _has_word(q, "calculat", "how is the score", "how does the score", "how do you",
+                 "how it work", "scoring method", "score work"):
+        return _answer_method()
+    if _has_word(q, "mean", "bands?", "what is a", "what does"):
+        return _answer_bands()
+    if _has_word(q, "why", "reason", "explain"):
+        return _answer_why(row, rule)
+    if _has_word(q, "recover", "fatigue", "tired", "how am i", "am i ok", "trend"):
+        return _answer_recovering(row, rule)
+    return None
+
+def _is_pushback(q: str) -> bool:
+    return bool(re.match(
+        r"^(no+|noo+|nah|nope|wrong|incorrect|not right|that's wrong|thats wrong|"
+        r"i don'?t understand|didn'?t help)\W*$",
+        q.strip(),
+    ))
+
 @app.post("/api/ask")
 def post_ask(req: AskRequest):
     row = STORE.latest_profile(req.user_id)
     rule = rule_assess(row)
-    q = req.question.lower()
+    q = req.question.lower().strip()
+
+    if _is_pushback(q):
+        return {"answer": _answer_pushback(), "source": "template"}
+
+    template = _template_answer(row, rule, q)
+    if template is not None:
+        return {"answer": template, "source": "template"}
 
     llm_answer = _try_ask_llm(row, rule, req.question, req.history)
     if llm_answer:
         return {"answer": llm_answer, "source": "llm"}
 
-    def has(*words):
-        return any(re.search(rf"\b{w}", q) for w in words)
-
-    if has("improve", "change", "suggest", "better", "should i do", "what should i",
-           "advice", "fix") and not has("eat", "food", "meal", "diet", "nutrition"):
-        answer = _answer_improve(row)
-    elif has("calculat", "how is", "how does", "how do you", "method", "work"):
-        answer = _answer_method()
-    elif has("mean", "bands?", "what is a", "what does"):
-        answer = _answer_bands()
-    elif has("why", "reason", "explain"):
-        answer = _answer_why(row, rule)
-    elif has("recover", "fatigue", "tired", "how am i", "am i ok", "trend"):
-        answer = _answer_recovering(row, rule)
-    else:
-        answer = _answer_fallback(row, rule)
-
-    return {"answer": answer, "source": "template"}
+    return {"answer": _answer_fallback(row, rule), "source": "template"}
 
 @app.get("/api/suggestions/{user_id}")
 def get_suggestions(user_id: str):
