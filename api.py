@@ -296,9 +296,14 @@ def post_whatif(req: WhatIfRequest):
         "delta": delta,
     }
 
+class AskTurn(BaseModel):
+    role: str
+    text: str
+
 class AskRequest(BaseModel):
     user_id: str
     question: str
+    history: list[AskTurn] = []
 
 def _fmt_signed(v: float, digits: int = 0, suffix: str = "") -> str:
     return f"{v:+.{digits}f}{suffix}"
@@ -417,7 +422,8 @@ def _ask_facts(row: pd.Series, rule) -> dict:
             pass
     return facts
 
-def _try_ask_llm(row: pd.Series, rule, question: str) -> str | None:
+def _try_ask_llm(row: pd.Series, rule, question: str,
+                 history: list[AskTurn] | None = None) -> str | None:
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         return None
@@ -426,15 +432,23 @@ def _try_ask_llm(row: pd.Series, rule, question: str) -> str | None:
 
         client = genai.Client(api_key=api_key)
         facts = _ask_facts(row, rule)
+        history = history or []
+        history_block = ""
+        if history:
+            lines = [f"{t.role.title()}: {t.text}" for t in history[-8:]]
+            history_block = "RECENT_CHAT:\n" + "\n".join(lines) + "\n\n"
         prompt = (
-            "You are Whyable, a friendly recovery coach in the OpenWearable app. "
-            "Answer the user's question in plain language (no jargon, no medical diagnoses). "
+            "You are Whyable, a recovery coach in the OpenWearable app. "
+            "Answer the user's latest question directly in plain language (no jargon, no diagnoses). "
             "Use ONLY the facts in USER_DATA — do not invent numbers or metrics. "
-            "If they ask who you are, introduce yourself briefly and say you explain their "
-            "recovery scores from wearable data. "
-            "If the question is unrelated to recovery, sleep, training, or their data, "
-            "politely redirect to those topics. "
-            "Keep answers to 2-4 short sentences unless they ask for detail.\n\n"
+            "Do NOT greet the user (no 'Hi', 'Hello', 'Hey'). "
+            "Do NOT introduce yourself unless they explicitly ask who or what you are. "
+            "If RECENT_CHAT shows you already introduced yourself, never repeat that. "
+            "For follow-up questions, answer only what was asked — stay concise. "
+            "If the question is off-topic (food, identity, etc.), give a brief redirect "
+            "without re-introducing yourself. "
+            "2-3 short sentences unless they ask for detail.\n\n"
+            f"{history_block}"
             f"USER_QUESTION: {question}\n\n"
             f"USER_DATA:\n{json.dumps(facts, indent=2)}"
         )
@@ -454,14 +468,15 @@ def post_ask(req: AskRequest):
     rule = rule_assess(row)
     q = req.question.lower()
 
-    llm_answer = _try_ask_llm(row, rule, req.question)
+    llm_answer = _try_ask_llm(row, rule, req.question, req.history)
     if llm_answer:
         return {"answer": llm_answer, "source": "llm"}
 
     def has(*words):
         return any(re.search(rf"\b{w}", q) for w in words)
 
-    if has("improve", "change", "suggest", "better", "should i do", "what should", "advice", "fix"):
+    if has("improve", "change", "suggest", "better", "should i do", "what should i",
+           "advice", "fix") and not has("eat", "food", "meal", "diet", "nutrition"):
         answer = _answer_improve(row)
     elif has("calculat", "how is", "how does", "how do you", "method", "work"):
         answer = _answer_method()

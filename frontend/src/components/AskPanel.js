@@ -26,9 +26,14 @@ export default function AskPanel({ data }) {
     if (!question.trim() || busy) return;
     setInput("");
     setBusy(true);
+    const prior = messages;
     setMessages((m) => [...m, { role: "user", text: question }]);
     try {
-      const res = await postAsk({ user_id: data.user_id, question });
+      const res = await postAsk({
+        user_id: data.user_id,
+        question,
+        history: prior.map((m) => ({ role: m.role, text: m.text })),
+      });
       setMessages((m) => [...m, { role: "assistant", text: res.answer }]);
     } catch {
       setMessages((m) => [
