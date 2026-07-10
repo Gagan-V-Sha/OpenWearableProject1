@@ -410,33 +410,37 @@ def _answer_improve(row: pd.Series) -> str:
     return ("Here is what the model says would actually change your outcome "
             "(counterfactuals computed with DiCE):\n" + "\n".join(lines))
 
+def _answer_out_of_scope(extra: str | None = None) -> str:
+    msg = (
+        "I can't answer that — I only explain what's in your recovery data here: "
+        "your score, sleep, HRV, training load, and today's recommendation."
+    )
+    if extra:
+        msg = f"{extra} {msg}"
+    return msg + " Tap a suggestion below to get started."
+
 def _answer_fallback(row: pd.Series, rule) -> str:
+    score = round(rule.score * 100)
+    band = score_to_band(rule.score)
     return (
-        f"I'm not sure how to answer that. Your recovery today is {round(rule.score * 100)}/100 "
-        f"({score_to_band(rule.score)}) — guidance: {rule.recommendation}. "
-        "Try a suggestion below, or ask 'why is my recovery low?'"
+        _answer_out_of_scope()
+        + f" Right now you're at {score}/100 ({band}) — guidance: {rule.recommendation}."
     )
 
 def _open_chat_answer(row: pd.Series, rule, q: str) -> str | None:
     if _has_word(q, "who are you", "what are you"):
         return (
             "I'm Whyable — I explain your recovery scores from wearable data. "
-            "I don't diagnose or give medical advice; I translate your metrics into plain guidance."
+            "I only answer questions about your score, sleep, training, and recommendations."
         )
     if re.search(r"\bwho am i\b", q):
-        return (
-            "I don't know your identity — only this week's wearable metrics for the selected athlete. "
-            f"Right now that profile shows {round(rule.score * 100)}/100 ({score_to_band(rule.score)})."
+        return _answer_out_of_scope(
+            "I don't know who you are — only this athlete's wearable metrics."
         )
     if _has_word(q, "eat", "food", "meal", "diet", "nutrition", "snack"):
-        return (
-            "I can't recommend specific foods. I focus on recovery signals — sleep, HRV, and training load. "
-            "Ask 'what should I change?' for training and sleep adjustments backed by your data."
-        )
+        return _answer_out_of_scope("I can't give food or nutrition advice.")
     if re.search(r"\bwhere am i\b", q) or _has_word(q, "location", "where i am"):
-        return (
-            "I don't have location data — only this athlete's wearable recovery metrics for the past week."
-        )
+        return _answer_out_of_scope("I don't have location data.")
     if re.search(r"rec[eov]+ry", q) and _has_word(q, "good", "gud", "great", "fine", "well", "bad", "poor"):
         score = round(rule.score * 100)
         band = score_to_band(rule.score)

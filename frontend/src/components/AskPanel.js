@@ -51,7 +51,7 @@ export default function AskPanel({ data }) {
         <span className="ask-dot">●</span> Ask about your scores
       </h3>
       <p className="muted">
-        Plain answers — no jargon. Ask about your score, recovery, or what to change.
+        I only answer questions about your recovery score, sleep, training, and recommendations.
       </p>
 
       <div className="ask-thread">
@@ -81,7 +81,7 @@ export default function AskPanel({ data }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about your recovery, scores, or training…"
+          placeholder="Ask about your score, sleep, or training…"
         />
         <button type="submit" disabled={busy || !input.trim()}>
           Ask
