@@ -339,15 +339,46 @@ def _answer_recovering(row: pd.Series, rule) -> str:
     return (f"{lead}{because}. Recovery score: {round(rule.score * 100)}/100 "
             f"({band}), so today's guidance is: {rule.recommendation}.")
 
+def _why_low_recovery(row: pd.Series, rule) -> str:
+    score = round(rule.score * 100)
+    band = score_to_band(rule.score)
+    neg = sorted([c for c in rule.fired() if c.delta < 0], key=lambda c: c.delta)
+    pos = sorted([c for c in rule.fired() if c.delta > 0], key=lambda c: -c.delta)
+    parts = [f"Your recovery is {score}/100 ({band})"]
+    if band == "Poor":
+        parts[0] += " — well below the 40-point threshold"
+    parts[0] += "."
+    if neg:
+        drivers = ", ".join(c.message.rstrip(".").lower() for c in neg[:3])
+        parts.append(f"The main factors pulling it down: {drivers}.")
+    if pos:
+        parts.append(f"On the plus side: {pos[0].message.rstrip('.').lower()}.")
+    return " ".join(parts)
+
+def _why_rest_day(row: pd.Series, rule) -> str:
+    score = round(rule.score * 100)
+    band = score_to_band(rule.score)
+    if rule.recommendation != "Rest Day":
+        return (f"Today's guidance is actually {rule.recommendation}, not a full rest day — "
+                f"your score is {score}/100 ({band}).")
+    neg = sorted([c for c in rule.fired() if c.delta < 0], key=lambda c: c.delta)
+    drivers = ", ".join(c.message.rstrip(".").lower() for c in neg[:2]) if neg else (
+        "your recovery signals are below baseline"
+    )
+    return (f"A rest day is recommended because your score is {score}/100 ({band} — below 40). "
+            f"The main drivers: {drivers}. Light movement is fine, but hard training would add strain.")
+
+def _answer_poor_mean(rule) -> str:
+    score = round(rule.score * 100)
+    return (
+        f"A Poor score (below {round(REST_THRESHOLD * 100)}) means incomplete recovery — "
+        f"we recommend a Rest Day. Yours is {score}/100 right now. "
+        f"Moderate ({round(REST_THRESHOLD * 100)}–{round(INTENSIVE_THRESHOLD * 100)}) = light activity; "
+        f"Good ({round(INTENSIVE_THRESHOLD * 100)}+) = ready for hard training."
+    )
+
 def _answer_why(row: pd.Series, rule) -> str:
-    fired = sorted(rule.fired(), key=lambda c: -abs(c.delta))
-    if not fired:
-        return (f"Your score of {round(rule.score * 100)} is near the neutral baseline - "
-                "none of the recovery rules fired strongly this week.")
-    lines = [f"- {c.message} [{'+' if c.delta > 0 else ''}{c.delta:.2f} to the score, {c.citation}]"
-             for c in fired[:4]]
-    return (f"Your recovery score is {round(rule.score * 100)}/100 ({score_to_band(rule.score)}), "
-            f"which maps to '{rule.recommendation}'. The signals behind it:\n" + "\n".join(lines))
+    return _why_low_recovery(row, rule)
 
 def _answer_bands() -> str:
     return (
@@ -466,8 +497,16 @@ def _try_ask_llm(row: pd.Series, rule, question: str,
 
 def _answer_pushback() -> str:
     return (
-        "Got it — sorry that wasn't helpful. "
-        "Try a specific question like 'why is my recovery low?' or tap one of the suggestions below."
+        "Sorry that wasn't clear. Try 'why is my recovery low?', 'why a rest day?', "
+        "or 'what should I change to improve it?'"
+    )
+
+def _answer_affirmative(row: pd.Series, rule) -> str:
+    score = round(rule.score * 100)
+    band = score_to_band(rule.score)
+    return (
+        f"Your score is {score}/100 ({band}) — today's guidance is {rule.recommendation}. "
+        "Ask 'why is my recovery low?' or 'what should I change?' for more detail."
     )
 
 def _has_word(q: str, *words: str) -> bool:
@@ -480,8 +519,15 @@ def _template_answer(row: pd.Series, rule, q: str) -> str | None:
     if _has_word(q, "calculat", "how is the score", "how does the score", "how do you",
                  "how it work", "scoring method", "score work"):
         return _answer_method()
+    if _has_word(q, "poor") and _has_word(q, "mean", "what does", "what is"):
+        return _answer_poor_mean(rule)
     if _has_word(q, "mean", "bands?", "what is a", "what does"):
         return _answer_bands()
+    if _has_word(q, "rest day", "rest days") and _has_word(q, "why", "reason"):
+        return _why_rest_day(row, rule)
+    if _has_word(q, "why", "reason", "explain") and _has_word(
+            q, "low", "recover", "recovery", "today", "score", "poor"):
+        return _why_low_recovery(row, rule)
     if _has_word(q, "why", "reason", "explain"):
         return _answer_why(row, rule)
     if _has_word(q, "recover", "fatigue", "tired", "how am i", "am i ok", "trend"):
@@ -495,6 +541,12 @@ def _is_pushback(q: str) -> bool:
         q.strip(),
     ))
 
+def _is_affirmative(q: str) -> bool:
+    return bool(re.match(
+        r"^(yes+|yeah|yep|yup|y|ok|okay|sure|thanks|thank you|got it|cool)\W*$",
+        q.strip(),
+    ))
+
 @app.post("/api/ask")
 def post_ask(req: AskRequest):
     row = STORE.latest_profile(req.user_id)
@@ -503,6 +555,9 @@ def post_ask(req: AskRequest):
 
     if _is_pushback(q):
         return {"answer": _answer_pushback(), "source": "template"}
+
+    if _is_affirmative(q):
+        return {"answer": _answer_affirmative(row, rule), "source": "template"}
 
     template = _template_answer(row, rule, q)
     if template is not None:
