@@ -64,8 +64,14 @@ export default function App() {
           <h2>Can't reach the backend</h2>
           <p className="muted">{error}</p>
           <p>
-            Start the API first: <code>cd Backend-Python/OpenWearableProject1</code> then{" "}
-            <code>uvicorn api:app --reload --port 8000</code>
+            {process.env.NODE_ENV === "production"
+              ? "The live API may still be starting (first request can take ~30s). Refresh in a moment."
+              : (
+                <>
+                  Start the API first: <code>cd OpenWearableProject1</code> then{" "}
+                  <code>uvicorn api:app --reload --port 8000</code>
+                </>
+              )}
           </p>
         </div>
       </div>

@@ -78,8 +78,8 @@ The backend is already live at https://open-wearable-project1.vercel.app. Deploy
 1. [Vercel](https://vercel.com/new) → Import `Gagan-V-Sha/OpenWearableProject1`
 2. Set **Root Directory** to `frontend`
 3. Framework should auto-detect **Create React App** (`npm run build` → `build/`)
-4. Optional: override env `REACT_APP_API_BASE` if the API URL changes (default in `.env.production` points to the live backend)
-5. Deploy
+4. Deploy — `frontend/vercel.json` proxies `/api/*` to the live backend (no CORS issues on mobile)
+5. Optional: set `REACT_APP_API_BASE` only if you need a different API host
 
-The app uses hash routes (`#/monitoring`, `#/audit`), so no extra routing config is required beyond `frontend/vercel.json`.
+The app uses hash routes (`#/monitoring`, `#/audit`).
 
