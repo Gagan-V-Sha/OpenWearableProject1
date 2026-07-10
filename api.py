@@ -368,6 +368,66 @@ def _why_rest_day(row: pd.Series, rule) -> str:
     return (f"A rest day is recommended because your score is {score}/100 ({band} — below 40). "
             f"The main drivers: {drivers}. Light movement is fine, but hard training would add strain.")
 
+def _why_good_recovery(row: pd.Series, rule) -> str:
+    score = round(rule.score * 100)
+    band = score_to_band(rule.score)
+    pos = sorted([c for c in rule.fired() if c.delta > 0], key=lambda c: -c.delta)
+    neg = sorted([c for c in rule.fired() if c.delta < 0], key=lambda c: c.delta)
+    parts = [f"Your recovery is {score}/100 ({band})"]
+    if band == "Good":
+        parts[0] += f" — above the {round(INTENSIVE_THRESHOLD * 100)}-point threshold"
+    parts[0] += "."
+    if pos:
+        parts.append(f"What's helping: {', '.join(c.message.rstrip('.').lower() for c in pos[:3])}.")
+    if neg:
+        parts.append(f"One drag: {neg[0].message.rstrip('.').lower()}.")
+    return " ".join(parts)
+
+def _why_intensive_training(row: pd.Series, rule) -> str:
+    score = round(rule.score * 100)
+    band = score_to_band(rule.score)
+    if rule.recommendation != "Intensive Training":
+        return (f"Today's guidance is {rule.recommendation}, not intensive training — "
+                f"your score is {score}/100 ({band}).")
+    pos = sorted([c for c in rule.fired() if c.delta > 0], key=lambda c: -c.delta)
+    drivers = ", ".join(c.message.rstrip(".").lower() for c in pos[:2]) if pos else (
+        "your recovery signals look strong"
+    )
+    return (f"Hard training is cleared because your score is {score}/100 ({band}). "
+            f"Key positives: {drivers}.")
+
+def _why_light_activity(row: pd.Series, rule) -> str:
+    score = round(rule.score * 100)
+    band = score_to_band(rule.score)
+    if rule.recommendation != "Light Activity":
+        return (f"Today's guidance is {rule.recommendation}, not light activity — "
+                f"your score is {score}/100 ({band}).")
+    fired = sorted(rule.fired(), key=lambda c: -abs(c.delta))
+    drivers = ", ".join(c.message.rstrip(".").lower() for c in fired[:2]) if fired else (
+        "your signals are in the middle band"
+    )
+    return (f"Light activity fits because your score is {score}/100 ({band} — between "
+            f"{round(REST_THRESHOLD * 100)} and {round(INTENSIVE_THRESHOLD * 100)}). "
+            f"Main signals: {drivers}. Save hard sessions for when you're fully recovered.")
+
+def _answer_good_mean(rule) -> str:
+    score = round(rule.score * 100)
+    return (
+        f"A Good score ({round(INTENSIVE_THRESHOLD * 100)}+) means you're well recovered — "
+        f"cleared for intensive training. Yours is {score}/100 right now. "
+        f"Poor (below {round(REST_THRESHOLD * 100)}) = rest day; "
+        f"Moderate = light activity."
+    )
+
+def _answer_moderate_mean(rule) -> str:
+    score = round(rule.score * 100)
+    return (
+        f"A Moderate score ({round(REST_THRESHOLD * 100)}–{round(INTENSIVE_THRESHOLD * 100)}) "
+        f"means partial recovery — light activity is ideal. Yours is {score}/100 right now. "
+        f"Below {round(REST_THRESHOLD * 100)} = rest day; "
+        f"{round(INTENSIVE_THRESHOLD * 100)}+ = ready for hard training."
+    )
+
 def _answer_poor_mean(rule) -> str:
     score = round(rule.score * 100)
     return (
@@ -560,10 +620,25 @@ def _template_answer(row: pd.Series, rule, q: str) -> str | None:
         return _answer_method()
     if _has_word(q, "poor") and _has_word(q, "mean", "what does", "what is"):
         return _answer_poor_mean(rule)
+    if _has_word(q, "good") and _has_word(q, "mean", "what does", "what is"):
+        return _answer_good_mean(rule)
+    if _has_word(q, "moderate") and _has_word(q, "mean", "what does", "what is"):
+        return _answer_moderate_mean(rule)
     if _has_word(q, "mean", "bands?", "what is a", "what does"):
         return _answer_bands()
+    if _has_word(q, "light activity", "light training", "easy session") and _has_word(
+            q, "why", "reason"):
+        return _why_light_activity(row, rule)
+    if _has_word(q, "train hard", "intensive", "hard session", "hard training") and _has_word(
+            q, "why", "reason", "can i"):
+        return _why_intensive_training(row, rule)
     if _has_word(q, "rest day", "rest days") and _has_word(q, "why", "reason"):
         return _why_rest_day(row, rule)
+    if re.search(r"\bam i recovering well\b", q) or _has_word(q, "recovering well"):
+        return _answer_recovering(row, rule)
+    if _has_word(q, "why", "reason", "explain") and _has_word(
+            q, "high", "good", "strong"):
+        return _why_good_recovery(row, rule)
     if _has_word(q, "why", "reason", "explain") and _has_word(
             q, "low", "recover", "recovery", "today", "score", "poor"):
         return _why_low_recovery(row, rule)
