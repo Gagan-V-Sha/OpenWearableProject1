@@ -1,6 +1,7 @@
 # OpenWearable
 
 A **Human-Centered AI (HCAI)** backend that turns wearable data into simple, explainable daily recovery guidance.
+Run the project locally, due to certain issues with deploying to vercel not all backend files are being ran in vercel. 
 
 ## The problem
 
