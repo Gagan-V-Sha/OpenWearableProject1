@@ -10,6 +10,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
+
+ROOT = Path(__file__).resolve().parent
+load_dotenv(ROOT / ".env")
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -32,7 +36,6 @@ except ImportError:
     }
     SuggestionEngine = None
 
-ROOT = Path(__file__).resolve().parent
 PROCESSED = ROOT / "data" / "processed"
 PROFILE_PATH = PROCESSED / "profiles_7day.csv"
 DAILY_PATH = PROCESSED / "combined_daily.csv"
