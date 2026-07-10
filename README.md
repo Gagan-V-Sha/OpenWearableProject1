@@ -52,9 +52,34 @@ The goal isn't just prediction — it's **recovery guidance people can trust**.
 
 ## Run locally
 
+**Backend** (repo root):
+
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn api:app --reload --port 8000
+```
+
+**Frontend** (`frontend/`):
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Open http://localhost:3000 — the UI calls the API at http://localhost:8000 by default.
+
+## Deploy frontend (Vercel)
+
+The backend is already live at https://open-wearable-project1.vercel.app. Deploy the React UI as a **second Vercel project** from the same repo:
+
+1. [Vercel](https://vercel.com/new) → Import `Gagan-V-Sha/OpenWearableProject1`
+2. Set **Root Directory** to `frontend`
+3. Framework should auto-detect **Create React App** (`npm run build` → `build/`)
+4. Optional: override env `REACT_APP_API_BASE` if the API URL changes (default in `.env.production` points to the live backend)
+5. Deploy
+
+The app uses hash routes (`#/monitoring`, `#/audit`), so no extra routing config is required beyond `frontend/vercel.json`.
 
