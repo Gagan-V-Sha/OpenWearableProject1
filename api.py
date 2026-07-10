@@ -412,11 +412,46 @@ def _answer_improve(row: pd.Series) -> str:
 
 def _answer_fallback(row: pd.Series, rule) -> str:
     return (
-        f"Your recovery today is {round(rule.score * 100)}/100 "
-        f"({score_to_band(rule.score)}) and the recommendation is {rule.recommendation}. "
-        "You can ask me things like 'Am I recovering well?', 'Why is my recovery low?', "
-        "'How is the score calculated?' or 'What should I change to improve it?'."
+        f"I'm not sure how to answer that. Your recovery today is {round(rule.score * 100)}/100 "
+        f"({score_to_band(rule.score)}) — guidance: {rule.recommendation}. "
+        "Try a suggestion below, or ask 'why is my recovery low?'"
     )
+
+def _open_chat_answer(row: pd.Series, rule, q: str) -> str | None:
+    if _has_word(q, "who are you", "what are you"):
+        return (
+            "I'm Whyable — I explain your recovery scores from wearable data. "
+            "I don't diagnose or give medical advice; I translate your metrics into plain guidance."
+        )
+    if re.search(r"\bwho am i\b", q):
+        return (
+            "I don't know your identity — only this week's wearable metrics for the selected athlete. "
+            f"Right now that profile shows {round(rule.score * 100)}/100 ({score_to_band(rule.score)})."
+        )
+    if _has_word(q, "eat", "food", "meal", "diet", "nutrition", "snack"):
+        return (
+            "I can't recommend specific foods. I focus on recovery signals — sleep, HRV, and training load. "
+            "Ask 'what should I change?' for training and sleep adjustments backed by your data."
+        )
+    if re.search(r"\bwhere am i\b", q) or _has_word(q, "location", "where i am"):
+        return (
+            "I don't have location data — only this athlete's wearable recovery metrics for the past week."
+        )
+    if re.search(r"rec[eov]+ry", q) and _has_word(q, "good", "gud", "great", "fine", "well", "bad", "poor"):
+        score = round(rule.score * 100)
+        band = score_to_band(rule.score)
+        if _has_word(q, "good", "gud", "great", "fine", "well") and band != "Good":
+            return (
+                f"Your wearable data shows {score}/100 ({band}) today — we'd still recommend "
+                f"{rule.recommendation}. Ask 'why is my recovery low?' to see what's driving that."
+            )
+        if _has_word(q, "bad", "poor") and band == "Good":
+            return (
+                f"Actually your data looks strong — {score}/100 ({band}). "
+                f"Today's guidance is {rule.recommendation}."
+            )
+        return _answer_recovering(row, rule)
+    return None
 
 def _ask_facts(row: pd.Series, rule) -> dict:
     facts = {
@@ -530,7 +565,8 @@ def _template_answer(row: pd.Series, rule, q: str) -> str | None:
         return _why_low_recovery(row, rule)
     if _has_word(q, "why", "reason", "explain"):
         return _answer_why(row, rule)
-    if _has_word(q, "recover", "fatigue", "tired", "how am i", "am i ok", "trend"):
+    if _has_word(q, "recover", "fatigue", "tired", "trend") or re.search(
+            r"\bhow am i\b", q) or re.search(r"\bam i ok\b", q):
         return _answer_recovering(row, rule)
     return None
 
@@ -563,11 +599,15 @@ def post_ask(req: AskRequest):
     if template is not None:
         return {"answer": template, "source": "template"}
 
+    open_answer = _open_chat_answer(row, rule, q)
+    if open_answer is not None:
+        return {"answer": open_answer, "source": "template"}
+
     llm_answer = _try_ask_llm(row, rule, req.question, req.history)
     if llm_answer:
         return {"answer": llm_answer, "source": "llm"}
 
-    return {"answer": _answer_fallback(row, rule), "source": "template"}
+    return {"answer": _answer_fallback(row, rule), "source": "fallback"}
 
 @app.get("/api/suggestions/{user_id}")
 def get_suggestions(user_id: str):
