@@ -1,4 +1,24 @@
+# Import your own Fitbit data into the Whyable pipeline.
 
+# Two input modes:
+
+#   1. Google Takeout / Fitbit account export (recommended, no OAuth needed):
+#        python import_fitbit.py --takeout "path/to/Takeout/Fitbit" --user-id REAL_ME
+#      Download from https://takeout.google.com (select only Fitbit) or from
+#      fitbit.com account settings -> "Data Export".
+
+#   2. A plain daily CSV you assembled yourself:
+#        python import_fitbit.py --csv my_week.csv --user-id REAL_ME
+#      Required column: date (YYYY-MM-DD). Optional columns: sleep_hours,
+#      resting_hr, steps, sleep_efficiency, active_minutes, rmssd.
+
+# The script maps everything into the combined_daily.csv schema, replaces any
+# previous rows for the same user id, registers the user in
+# user_demographics.csv, and rebuilds profiles_7day.csv so the API, model,
+# SHAP explanations and DiCE suggestions all work on your real data.
+
+# NOTE: you need at least ~14 consecutive days of data (7-day window + 7-day
+# baseline week) before a recovery profile can be computed.
 
 from __future__ import annotations
 
