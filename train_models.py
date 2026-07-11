@@ -1,3 +1,4 @@
+# Train the XGBoost classifier and the Isolation Forest for anomaly detection.
 
 
 from pathlib import Path
@@ -27,7 +28,7 @@ def train_models():
 
     print("Loading profiles data...")
     df = pd.read_csv(PROFILE_PATH)
-
+ # rmssd_avg_7d may be NaN, XGBoost handles it.
     labeled = df.dropna(subset=[TARGET]).copy()
     labeled = labeled.dropna(subset=[f for f in FEATURES if f != "rmssd_avg_7d"])
     print(f"Training target: {TARGET!r}")
@@ -36,7 +37,7 @@ def train_models():
     X = labeled[FEATURES]
     y = labeled[TARGET].map(LABEL_MAP)
     groups = labeled["user_id"]
-
+ # Split BY USER so no user's overlapping 7-day windows appear in both train and test (Here there was mix which is why the accuracy was so high!).
     gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
     train_idx, test_idx = next(gss.split(X, y, groups=groups))
     X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
@@ -46,12 +47,13 @@ def train_models():
           f"Test: {len(X_test)} rows / {groups.iloc[test_idx].nunique()} users")
     assert set(groups.iloc[train_idx]).isdisjoint(set(groups.iloc[test_idx])),\
         "User leakage between train and test!"
-
+# Class imbalance handled with balanced sample weights.
     label_names = {v: k for k, v in LABEL_MAP.items()}
     print("Train class counts:",
           {label_names[k]: int(v) for k, v in zip(*np.unique(y_train, return_counts=True))})
     sample_weight = compute_sample_weight(class_weight="balanced", y=y_train)
 
+    # Fairness feedback loop: fold in reweighing factors emitted by a flagged fairness audit
     weights_path = PROCESSED / "fairness_weights.csv"
     if weights_path.exists():
         fw = pd.read_csv(weights_path)
@@ -87,7 +89,7 @@ def train_models():
         target_names=[label_names[i] for i in present],
         zero_division=0,
     ))
-
+# Secondary metric: agreement with human self-reports on users.
     if TARGET == "rule_recommendation" and "recommendation" in labeled.columns:
         sema = labeled.iloc[test_idx].dropna(subset=["recommendation"])
         if len(sema):
