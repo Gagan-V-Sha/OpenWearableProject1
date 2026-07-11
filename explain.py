@@ -1,3 +1,5 @@
+# Explanation Generator.
+# Turns the ML prediction + SHAP feature attributions + transparent rule engine reasoning into natural language, adapted to the user's expertise level (novice / expert).
 
 
 from __future__ import annotations
