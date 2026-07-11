@@ -1,4 +1,4 @@
-
+# Preprocess LifeSnaps daily wearable data and extract demographics.
 
 from pathlib import Path
 import pandas as pd
