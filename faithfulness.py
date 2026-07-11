@@ -1,3 +1,6 @@
+# Faithfulness hallucination suppression module.
+
+# Checks whether an LLM generated explanation actually reflects the rule engine and the SHAP feature ranking. Produces a faithfulness score in [0, 1].
 
 
 from __future__ import annotations
