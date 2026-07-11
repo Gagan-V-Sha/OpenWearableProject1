@@ -1,4 +1,4 @@
-
+# Build 7-day rolling profiles for Machine Learning.
 
 from pathlib import Path
 import pandas as pd
@@ -12,9 +12,9 @@ DATA = ROOT / "data"
 PROCESSED = DATA / "processed"
 DAILY_PATH = PROCESSED / "combined_daily.csv"
 OUT_PROFILES = PROCESSED / "profiles_7day.csv"
-
+# A 7-day window needs at least this many real days.
 MIN_DAYS_PER_WINDOW = 4
-
+# Mean daily active minutes below this is treated as no meaningful load.
 MIN_CHRONIC_LOAD = 10.0
 
 def sema_label(tired, rested) -> str | float:
@@ -26,14 +26,14 @@ def sema_label(tired, rested) -> str | float:
         return "Rest Day"
     if rested == 1.0 and tired == 0.0:
         return "Intensive Training"
-    return "Light Activity"
+    return "Light Activity" # neutral self-report
 
 def build_user_profiles(user_id: str, group: pd.DataFrame) -> pd.DataFrame:
     user_df = group.sort_values("date").set_index("date").copy()
-
+# Complete date range to expose missing days
     idx = pd.date_range(user_df.index.min(), user_df.index.max())
     user_df = user_df.reindex(idx)
-
+ # Interpolate inside gaps only, with strict limits: long gaps stay NaN and the d is dropped.
     cols_sleep_hr = ["sleep_hours", "resting_hr", "sleep_efficiency"]
     user_df[cols_sleep_hr] = user_df[cols_sleep_hr].interpolate(
         method="linear", limit=7, limit_area="inside"
@@ -41,10 +41,11 @@ def build_user_profiles(user_id: str, group: pd.DataFrame) -> pd.DataFrame:
     user_df["rmssd"] = user_df["rmssd"].interpolate(
         method="linear", limit=3, limit_area="inside"
     )
-
+  # Device-not-worn days become NaN so rolling stats skip them,
+    # instead of counting fake "0 activity" days.
     worn = (user_df["steps"].fillna(0) > 0) | (user_df["active_minutes"].fillna(0) > 0)
     user_df.loc[~worn, ["steps", "active_minutes"]] = np.nan
-
+# 7-day rolling stats over available days (>= MIN_DAYS_PER_WINDOW real days)
     roll = user_df.rolling(window=7, min_periods=MIN_DAYS_PER_WINDOW)
     sleep_avg = roll["sleep_hours"].mean()
     hr_avg = roll["resting_hr"].mean()
@@ -52,11 +53,11 @@ def build_user_profiles(user_id: str, group: pd.DataFrame) -> pd.DataFrame:
     rmssd_avg = roll["rmssd"].mean()
     steps_avg = roll["steps"].mean()
     active_avg = roll["active_minutes"].mean()
-
+ # Workouts: worn days with > 30 active minutes
     is_workout = user_df["active_minutes"].gt(30.0).astype(float)
     is_workout[user_df["active_minutes"].isna()] = np.nan
     workouts = is_workout.rolling(window=7, min_periods=MIN_DAYS_PER_WINDOW).sum()
-
+ # Baselines: previous week's rolling stats
     sleep_prev = sleep_avg.shift(7)
     hr_prev = hr_avg.shift(7)
     active_prev = active_avg.shift(7)
@@ -113,7 +114,7 @@ def build_profiles() -> None:
     profiles_df = pd.concat(
         [build_user_profiles(uid, g) for uid, g in grouped], ignore_index=True
     )
-
+ # Keep only windows where all core features aRE from real data.
     n_before = len(profiles_df)
     profiles_df = profiles_df.dropna(subset=CORE_FEATURES).reset_index(drop=True)
     print(f"Dropped {n_before - len(profiles_df)} windows with insufficient real data.")
