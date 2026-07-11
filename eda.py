@@ -1,3 +1,5 @@
+# Exploratory Data Analysis (EDA) for the Open Wearables Project.
+# Analyzes the cleaned daily physiological data, demographics for the fairness layer,and the engineered 7-day rolling profiles used for Machine Learning.Generates and saves visual plots.
 
 
 import os
