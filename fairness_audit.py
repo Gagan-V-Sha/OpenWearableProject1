@@ -1,3 +1,11 @@
+# Fairness Audit Layer.
+# After predictions are generated, this module computes two group-fairness
+# metrics across each protected attribute (gender, age group):
+#
+#   SPD  Statistical Parity Difference
+#   EOD  Equal Opportunity Difference
+#
+# If SPD or EOD exceeds its threshold, the group is FLAGGED and the module reweight sample weights that train_models.py can consume in the next training cycle to reduce the disparity.
 
 
 from __future__ import annotations
