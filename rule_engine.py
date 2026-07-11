@@ -1,8 +1,9 @@
+# Rule engine. Single source of truth for the recovery rules, used for build_profiles.py and the explanation generator.
 
 
 from dataclasses import dataclass, field
 import pandas as pd
-
+# Recommendation thresholds on the recovery score [0.5, 1]
 REST_THRESHOLD = 0.40
 INTENSIVE_THRESHOLD = 0.60
 
