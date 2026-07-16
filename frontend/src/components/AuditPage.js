@@ -17,6 +17,39 @@ function ImpactBar({ impact, max }) {
   );
 }
 
+function fmtPoints(points) {
+  if (points == null || Number.isNaN(points)) return "";
+  return points > 0 ? `+${points}` : `${points}`;
+}
+
+/** Cutoffs + score points — same logic as rule_engine.py (for the Audit legend). */
+const RULE_CUTOFFS = [
+  {
+    name: "Resting HR change",
+    lines: ["< -2 bpm -> +8", "-2 to +2 -> 0", "+2 to +4 -> -10", "> +4 -> -18"],
+  },
+  {
+    name: "Sleep change",
+    lines: ["> +5% -> +8", "-5% to -10% -> -12", "< -10% -> -20"],
+  },
+  {
+    name: "Training load",
+    lines: ["< 0.8x -> -5", "0.8-1.3x -> +10", "1.3-1.5x -> -8", "> 1.5x -> -20"],
+  },
+  {
+    name: "Sleep efficiency",
+    lines: ["> 85% -> +7", "< 75% -> -10"],
+  },
+  {
+    name: "Workouts / week",
+    lines: ["3-5 -> +5", "> 5 -> -8"],
+  },
+  {
+    name: "HRV (RMSSD)",
+    lines: ["> 60 -> +15", "40-60 -> +5", "25-40 -> -10", "< 25 -> -20"],
+  },
+];
+
 function FairnessCard({ attr, spdThreshold, eodThreshold }) {
   if (attr.status !== "ok") {
     return (
@@ -47,19 +80,37 @@ function FairnessCard({ attr, spdThreshold, eodThreshold }) {
           {[
             ["SPD", g.SPD_vs_ref, spdThreshold],
             ["EOD", g.EOD_vs_ref, eodThreshold],
-          ].map(([name, value, threshold]) => (
-            <div key={name} className="fairness-row">
-              <span className="fairness-metric">{name}</span>
-              <div className="fairness-track">
-                <div
-                  className={Math.abs(value) > threshold ? "fairness-fill bad" : "fairness-fill"}
-                  style={{ width: `${Math.min(100, (Math.abs(value) / (threshold * 2)) * 100)}%` }}
-                />
-                <div className="fairness-threshold" />
+          ].map(([name, value, threshold]) => {
+            const num = value == null || Number.isNaN(Number(value)) ? null : Number(value);
+            const abs = num == null ? 0 : Math.abs(num);
+            const scaleMax = (threshold || 0.1) * 2;
+            return (
+              <div key={name} className="fairness-row">
+                <span className="fairness-metric">{name}</span>
+                <div className="fairness-bar-wrap">
+                  <div className="fairness-track">
+                    <div
+                      className={
+                        num != null && abs > threshold ? "fairness-fill bad" : "fairness-fill"
+                      }
+                      style={{
+                        width: `${Math.min(100, (abs / scaleMax) * 100)}%`,
+                      }}
+                    />
+                    <div className="fairness-threshold" title={`limit ${threshold}`} />
+                  </div>
+                  <div className="fairness-scale">
+                    <span>0</span>
+                    <span className="fairness-scale-mid">{Number(threshold).toFixed(1)} limit</span>
+                    <span>{scaleMax.toFixed(1)}</span>
+                  </div>
+                </div>
+                <span className="fairness-value">
+                  {num == null ? "n/a" : num.toFixed(2)}
+                </span>
               </div>
-              <span className="fairness-value">{value.toFixed(2)}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ))}
     </div>
@@ -113,23 +164,80 @@ export default function AuditPage({ userId, data }) {
         <div className="card">
           <h3>⚖ Rule engine</h3>
           <p className="muted small">
-            Transparent thresholds compared to this user's own baseline.
+            Numbers in brackets = this athlete&apos;s measured value. Score +/-N = points
+            added to the starting 50. Pass adds points; Flag removes them.
           </p>
-          {audit.checks.map((c, i) => (
-            <div key={i} className="check-row">
-              <div>
-                <div className="check-name">
-                  {c.signal} <span className="muted">({c.value})</span>
+          {(audit.checks || []).map((c, i) => {
+            const points =
+              c.points != null
+                ? c.points
+                : Math.round(Number(c.delta || 0) * 100);
+            return (
+              <div key={i} className="check-row">
+                <div>
+                  <div className="check-name">
+                    {c.signal} <span className="muted">({c.value})</span>
+                  </div>
+                  <div className="muted small">
+                    {c.message} <span className="check-cite">[{c.citation}]</span>
+                  </div>
                 </div>
-                <div className="muted small">
-                  {c.message} <span className="check-cite">[{c.citation}]</span>
+                <div className="check-badges">
+                  <span
+                    className={
+                      points >= 0 ? "badge badge-points pos" : "badge badge-points neg"
+                    }
+                  >
+                    Score {fmtPoints(points)}
+                  </span>
+                  <span className={c.passed ? "badge badge-pass" : "badge badge-fail"}>
+                    {c.passed ? "Pass" : "Flag"}
+                  </span>
                 </div>
               </div>
-              <span className={c.passed ? "badge badge-pass" : "badge badge-fail"}>
-                {c.passed ? "Pass" : "Flag"}
+            );
+          })}
+          <div className="score-walk">
+            <span className="muted small">How {audit.score} was calculated:</span>
+            <div className="score-walk-math">
+              <span>50</span>
+              {(audit.checks || []).map((c, i) => {
+                const points =
+                  c.points != null
+                    ? c.points
+                    : Math.round(Number(c.delta || 0) * 100);
+                const sign = points >= 0 ? "+" : "-";
+                return (
+                  <span key={i}>
+                    {" "}
+                    {sign} {Math.abs(points)}
+                  </span>
+                );
+              })}
+              <span>
+                {" "}
+                = <strong>{audit.score}</strong> ({audit.label})
               </span>
             </div>
-          ))}
+          </div>
+          <details className="cutoff-details">
+            <summary>Show all cutoffs &amp; points</summary>
+            <div className="cutoff-grid">
+              {RULE_CUTOFFS.map((r) => (
+                <div key={r.name} className="cutoff-card">
+                  <div className="cutoff-name">{r.name}</div>
+                  {r.lines.map((line) => (
+                    <div key={line} className="muted small">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <p className="muted small" style={{ marginTop: 10 }}>
+              Start at 50. Below 40 = Rest · 40–60 = Light · 60+ = Intensive.
+            </p>
+          </details>
         </div>
 
         <div className="card">
@@ -138,8 +246,6 @@ export default function AuditPage({ userId, data }) {
             {audit.moved.source === "shap"
               ? "Each factor's SHAP contribution. Red lowered recovery, green lifted it."
               : "Each rule's score contribution. Red lowered recovery, green lifted it."}
-            {audit.ml_confidence != null &&
-              ` ML confidence ${Math.round(audit.ml_confidence * 100)}%.`}
           </p>
           {audit.moved.items.map((item, i) => (
             <div key={i} className="impact-row">

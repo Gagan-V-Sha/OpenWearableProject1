@@ -784,6 +784,8 @@ def get_audit(user_id: str):
             "value": _fmt_feature(c.signal, c.value),
             "message": c.message,
             "delta": round(float(c.delta), 3),
+            # Points on the 0–100 score scale (what the UI shows next to Pass/Flag)
+            "points": int(round(float(c.delta) * 100)),
             "citation": c.citation,
             "passed": c.delta > 0,
         }
